@@ -1,0 +1,18 @@
+# Normalize line endings: store text as LF in the repository, check out native.
+* text=auto
+
+*.py    text
+*.sql   text
+*.md    text
+*.sh    text eol=lf
+*.txt   text
+*.yml   text
+*.yaml  text
+*.env   text
+Dockerfile text
+
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary

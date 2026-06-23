@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""data-monitoring — nightly coverage/progress reports for long-running backfills.
+
+For each report manifest in reports/<slug>.yaml it:
+  1. runs read-only SQL against the monitored database,
+  2. writes one snapshot row per metric per day to T_WC_DATA_MONITORING_SNAPSHOT
+     (idempotent upsert), computing the daily rate from prior snapshots,
+  3. renders a self-contained HTML artifact <slug>-YYYYMMDD.html into the
+     shared_data output directory, plus a daily index and index-latest.html,
+  4. prunes HTML artifacts older than RETENTION_DAYS (history stays in the table;
+     the NAS sync archives the files before they expire).
+
+Source-agnostic by design: a new campaign — TMDb, Wikidata, anything — is a new
+manifest entry, not new code.
+
+Usage:
+  python data-monitoring.py                      # all reports in reports/
+  python data-monitoring.py --report tmdb-tv-coverage
+  python data-monitoring.py --sample             # seeded sample, no DB, no writes
+"""
+import argparse
+import datetime
+import glob
+import os
+import sys
+
+import render
+
+REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/shared")
+TZ = os.environ.get("USER_TIMEZONE", "Europe/Paris")
+RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "30"))
+SOURCE_DEFAULT = "DATA"
+
+
+def _now():
+    import pytz
+    return datetime.datetime.now(pytz.timezone(TZ))
+
+
+def _pct(done, expected):
+    if done is None or not expected:
+        return None
+    return round(100.0 * float(done) / float(expected), 2)
+
+
+def load_manifest(path):
+    import yaml
+    with open(path, "r", encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
+
+
+def run_report(conn, manifest, run_dt):
+    """Execute every metric, persist a snapshot, return the result rows for render."""
+    import db
+    slug = manifest["slug"]
+    source_db = manifest.get("source_db", SOURCE_DEFAULT)
+    dat = run_dt.date()
+    tim = run_dt.strftime("%Y-%m-%d %H:%M:%S")
+    results = []
+    for order, m in enumerate(manifest["metrics"], start=1):
+        done = db.scalar(conn, m["done_sql"])
+        expected = db.scalar(conn, m["expected_sql"])
+        pct = _pct(done, expected)
+
+        # Daily rate + trend. A metric with trend_sql (volume-fill) gets its real
+        # per-day curve straight from the source table's DAT_CREAT — instant
+        # history. Completion metrics have no per-day source, so the rate is the
+        # delta vs the previous snapshot and the trend is the % history.
+        if m.get("trend_sql"):
+            pairs = db.fetch_pairs(conn, m["trend_sql"])
+            trend = [(str(a), b) for (a, b) in pairs]
+            trend_kind = "rate"
+            daily_rate = pairs[-1][1] if pairs else None
+        else:
+            prev = db.previous_done(conn, slug, source_db, m["table"], m["key"], dat)
+            daily_rate = (done - prev) if (done is not None and prev is not None) else None
+            trend = [(str(a), b) for (a, b) in db.pct_history(conn, slug, m["key"])]
+            trend_kind = "pct"
+
+        row = {
+            "REPORT_SLUG": slug, "SOURCE_DB": source_db, "TABLE_NAME": m["table"],
+            "METRIC_KEY": m["key"], "DONE_COUNT": done, "EXPECTED_COUNT": expected,
+            "PCT": pct, "DAILY_RATE": daily_rate,
+            "DESCRIPTION": m["description"], "LONG_DESC": m.get("long_desc"),
+            "DELETED": 0, "DISPLAY_ORDER": order,
+            "ID_CREATOR": 0, "DAT_CREAT": dat, "ID_OWNER": 0,
+            "TIM_UPDATED": tim, "ID_USER_UPDATED": 0,
+        }
+        db.upsert_snapshot(conn, row)
+        # snapshot just written → reflect it in the % history trend
+        if trend_kind == "pct" and (not trend or trend[-1][0] != str(dat)):
+            trend.append((str(dat), pct))
+
+        results.append({
+            "key": m["key"], "description": m["description"],
+            "long_desc": m.get("long_desc"), "warn_below": m.get("warn_below", 50),
+            "done": done, "expected": expected, "pct": pct, "daily_rate": daily_rate,
+            "trend": trend, "trend_kind": trend_kind,
+        })
+    return results
+
+
+def write_artifacts(report, results, run_dt, db_label):
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    stamp = run_dt.strftime("%Y%m%d")
+    generated_at = run_dt.strftime("%Y-%m-%d %H:%M %Z")
+    html_doc = render.render_report(report, results, generated_at, db_label)
+    fname = f"{report['slug']}-{stamp}.html"
+    path = os.path.join(OUTPUT_DIR, fname)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(html_doc)
+    return fname
+
+
+def write_index(report_files, run_dt):
+    """A tiny landing page linking the day's reports, plus a stable latest copy."""
+    stamp = run_dt.strftime("%Y%m%d")
+    generated_at = run_dt.strftime("%Y-%m-%d %H:%M %Z")
+    links = "\n".join(
+        f'<li><a href="{f}">{f}</a></li>' for f in sorted(report_files)
+    )
+    doc = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>data-monitoring — {generated_at}</title>
+<style>body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:28px;color:#263238}}
+h1{{font-size:18px}} li{{margin:4px 0}} .meta{{color:#90a4ae;font-size:12px}}</style>
+</head><body>
+<h1>data-monitoring reports</h1>
+<div class="meta">Generated {generated_at}</div>
+<ul>
+{links}
+</ul></body></html>
+"""
+    for name in (f"index-{stamp}.html", "index-latest.html"):
+        with open(os.path.join(OUTPUT_DIR, name), "w", encoding="utf-8") as fh:
+            fh.write(doc)
+
+
+def prune(run_dt):
+    """Delete *.html older than RETENTION_DAYS (NAS sync archives them first)."""
+    if RETENTION_DAYS <= 0:
+        return
+    cutoff = run_dt.timestamp() - RETENTION_DAYS * 86400
+    for path in glob.glob(os.path.join(OUTPUT_DIR, "*.html")):
+        if os.path.basename(path).startswith("index-latest"):
+            continue
+        if os.path.getmtime(path) < cutoff:
+            try:
+                os.remove(path)
+                print(f"pruned {os.path.basename(path)}")
+            except OSError as exc:
+                print(f"prune failed for {path}: {exc}", file=sys.stderr)
+
+
+# --- sample mode: render the UI from seeded numbers, no DB, no writes -------
+
+def _sample():
+    run_dt = datetime.datetime(2026, 6, 23, 6, 30)
+    report = {
+        "slug": "tmdb-tv-coverage",
+        "title": "TMDb — TV season & episode coverage",
+        "description": ("Progress of the long-running TV season/episode backfill driven by the "
+                        "tmdb-crawler series-refresh processes (4 / 28 / 33 + tv/changes). "
+                        "SAMPLE DATA — numbers are illustrative."),
+    }
+    # a ~7-week daily episode-gather curve (deterministic, illustrative)
+    base = datetime.date(2026, 5, 5)
+    ep_rate = [(str(base + datetime.timedelta(days=i)),
+                9000 + (i % 7) * 1200 + (i * 130)) for i in range(49)]
+    se_rate = [(str(base + datetime.timedelta(days=i)),
+                700 + (i % 5) * 90 + (i * 8)) for i in range(49)]
+    pct_hist = [(str(datetime.date(2026, 6, 23) - datetime.timedelta(days=d)),
+                 round(61.8 - d * 0.35, 2)) for d in range(20, -1, -1)]
+    pct_hist_se = [(str(datetime.date(2026, 6, 23) - datetime.timedelta(days=d)),
+                    round(74.2 - d * 0.22, 2)) for d in range(20, -1, -1)]
+    results = [
+        {"key": "episode_series_completion", "description": "Series with episodes fully gathered",
+         "long_desc": "Series whose TIM_EPISODES_COMPLETED is stamped by the crawler, over all "
+                      "non-deleted series. Resets when a series is refreshed (TIM_UPDATED > 30d).",
+         "warn_below": 60, "done": 42180, "expected": 68310, "pct": 61.75,
+         "daily_rate": 240, "trend": pct_hist, "trend_kind": "pct"},
+        {"key": "episode_volume_fill", "description": "Episodes stored vs episodes TMDb reports",
+         "long_desc": "COUNT(T_WC_TMDB_EPISODE) over SUM(NUMBER_OF_EPISODES). Denominator drifts "
+                      "with series-row freshness; treat as an estimate.",
+         "warn_below": 50, "done": 1254300, "expected": 1601200, "pct": 78.34,
+         "daily_rate": ep_rate[-1][1], "trend": ep_rate, "trend_kind": "rate"},
+        {"key": "season_series_completion", "description": "Series with seasons fully gathered",
+         "long_desc": "Series whose TIM_SEASONS_COMPLETED is stamped, over all non-deleted series.",
+         "warn_below": 60, "done": 50690, "expected": 68310, "pct": 74.21,
+         "daily_rate": 310, "trend": pct_hist_se, "trend_kind": "pct"},
+        {"key": "season_volume_fill", "description": "Seasons stored vs seasons TMDb reports",
+         "long_desc": "COUNT(T_WC_TMDB_SEASON) over SUM(NUMBER_OF_SEASONS).",
+         "warn_below": 50, "done": 198400, "expected": 232900, "pct": 85.19,
+         "daily_rate": se_rate[-1][1], "trend": se_rate, "trend_kind": "rate"},
+    ]
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples")
+    os.makedirs(out_dir, exist_ok=True)
+    doc = render.render_report(report, results, "2026-06-23 06:30 (SAMPLE)", "sample / no DB")
+    path = os.path.join(out_dir, "tmdb-tv-coverage-20260623.html")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(doc)
+    print(f"wrote {path}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="data-monitoring report generator")
+    ap.add_argument("--report", help="run a single report slug (default: all)")
+    ap.add_argument("--sample", action="store_true", help="render a seeded sample, no DB")
+    args = ap.parse_args()
+
+    if args.sample:
+        _sample()
+        return
+
+    import db
+    run_dt = _now()
+    manifests = sorted(glob.glob(os.path.join(REPORTS_DIR, "*.yaml")))
+    if args.report:
+        manifests = [p for p in manifests
+                     if os.path.splitext(os.path.basename(p))[0] == args.report]
+        if not manifests:
+            sys.exit(f"no manifest for report '{args.report}' in {REPORTS_DIR}")
+
+    # Fail loudly rather than emit an empty index — a missing reports/ dir in the
+    # container is a deploy error, not a no-op.
+    print(f"reports dir: {REPORTS_DIR} — {len(manifests)} manifest(s) found")
+    if not manifests:
+        sys.exit(f"ERROR: no report manifests in {REPORTS_DIR} "
+                 "— was the reports/ directory deployed into the image?")
+
+    db_label = f"{os.environ.get('DB_NAME', '?')}@{os.environ.get('DB_HOST', '?')}"
+    conn = db.get_connection()
+    written = []
+    try:
+        for path in manifests:
+            manifest = load_manifest(path)
+            results = run_report(conn, manifest, run_dt)
+            written.append(write_artifacts(manifest, results, run_dt, db_label))
+            print(f"report '{manifest['slug']}': {len(results)} metrics")
+            for r in results:
+                print(f"  {r['key']}: {r['done']}/{r['expected']} = {r['pct']}%")
+    finally:
+        conn.close()
+
+    write_index(written, run_dt)
+    prune(run_dt)
+
+
+if __name__ == "__main__":
+    main()

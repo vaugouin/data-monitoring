@@ -1,0 +1,73 @@
+# data-monitoring report manifest — TMDb TV season & episode coverage (V1).
+#
+# A "report" is a named bundle of metrics. The filename slug (tmdb-tv-coverage)
+# becomes the HTML artifact name: tmdb-tv-coverage-YYYYMMDD.html.
+#
+# Each metric needs:
+#   key          stable identifier (snapshot METRIC_KEY) — also used for the rate label
+#   table        the table being measured (snapshot TABLE_NAME)
+#   description  short human label (snapshot DESCRIPTION)
+#   long_desc    definition + how to read a NULL/zero (snapshot LONG_DESC)
+#   warn_below   coverage bar turns red below this %
+#   done_sql     single-value SELECT — the numerator
+#   expected_sql single-value SELECT — the denominator
+#   trend_sql    OPTIONAL two-column (day, count) SELECT — drives the rate sparkline
+#                straight from the source table; omit for completion-flag metrics
+#                (their trend is the % history accumulated in the snapshot table).
+#
+# All SQL is read-only. To add a campaign (Wikidata, etc.) drop a new <slug>.yaml
+# here — no code change.
+
+slug: tmdb-tv-coverage
+title: "TMDb — TV season & episode coverage"
+source_db: TMDB
+description: >
+  Progress of the long-running TV season/episode backfill, gathered as a side
+  effect of the tmdb-crawler series-refresh processes (4 / 28 / 33 and the
+  tv/changes loop) via f_tmdbserieselectiveseasonsepisodestosql.
+
+metrics:
+  - key: episode_series_completion
+    table: T_WC_TMDB_SERIE
+    description: "Series with episodes fully gathered"
+    long_desc: >
+      Series whose TIM_EPISODES_COMPLETED has been stamped by the crawler, over
+      all non-deleted series. The crawler re-opens a series for refresh once its
+      TIM_UPDATED is older than 30 days, so this reads slightly low — it is the
+      same completion mechanism f_tmdbserieselectiveseasonsepisodestosql uses.
+    warn_below: 60
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE TIM_EPISODES_COMPLETED IS NOT NULL AND DELETED = 0"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE DELETED = 0"
+
+  - key: episode_volume_fill
+    table: T_WC_TMDB_EPISODE
+    description: "Episodes stored vs episodes TMDb reports"
+    long_desc: >
+      COUNT(T_WC_TMDB_EPISODE) over SUM(T_WC_TMDB_SERIE.NUMBER_OF_EPISODES). The
+      denominator drifts with series-row freshness, so treat this as an estimate,
+      not an exact target. The sparkline is the real per-day gather curve.
+    warn_below: 50
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_EPISODE"
+    expected_sql: "SELECT SUM(NUMBER_OF_EPISODES) FROM T_WC_TMDB_SERIE WHERE DELETED = 0"
+    trend_sql: "SELECT DAT_CREAT, COUNT(*) FROM T_WC_TMDB_EPISODE GROUP BY DAT_CREAT ORDER BY DAT_CREAT"
+
+  - key: season_series_completion
+    table: T_WC_TMDB_SERIE
+    description: "Series with seasons fully gathered"
+    long_desc: >
+      Series whose TIM_SEASONS_COMPLETED has been stamped by the crawler, over
+      all non-deleted series. Season equivalent of episode_series_completion.
+    warn_below: 60
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE TIM_SEASONS_COMPLETED IS NOT NULL AND DELETED = 0"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE DELETED = 0"
+
+  - key: season_volume_fill
+    table: T_WC_TMDB_SEASON
+    description: "Seasons stored vs seasons TMDb reports"
+    long_desc: >
+      COUNT(T_WC_TMDB_SEASON) over SUM(T_WC_TMDB_SERIE.NUMBER_OF_SEASONS). Same
+      estimate caveat as episode_volume_fill. The sparkline is the per-day curve.
+    warn_below: 50
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SEASON"
+    expected_sql: "SELECT SUM(NUMBER_OF_SEASONS) FROM T_WC_TMDB_SERIE WHERE DELETED = 0"
+    trend_sql: "SELECT DAT_CREAT, COUNT(*) FROM T_WC_TMDB_SEASON GROUP BY DAT_CREAT ORDER BY DAT_CREAT"
