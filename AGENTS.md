@@ -61,3 +61,13 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
   `samples/`); validate the live path on the VPS where the DB is reachable.
 
 **Last Updated**: 2026-06-23
+
+## Backlog (Nestor second-brain)
+
+The implementation backlog for the Agent BBB ecosystem lives in the **Nestor** knowledge repo
+(a separate repo, not cloned alongside this one). This repo has no dedicated backlog file yet;
+use the cross-repo dashboard:
+
+- Dashboard: `C:\Users\vaugo\Nestor\projets\t2s-backlog\index.md`
+
+NOTE: this is a local path on Philippe's PC and does not resolve on the VPS or on cloud agents.
