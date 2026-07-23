@@ -1,0 +1,224 @@
+# data-monitoring report manifest — Wikipedia refresh, per content family.
+#
+# Companion to `wikipedia-sections-refresh.yaml`: same campaign (the H2+H3
+# fine-section split live on 2026-07-20 23:00 Paris), same denominator logic, but
+# broken down by T_WC_WIKIPEDIA_PAGE_LANG.ITEM_TYPE — the crawler's content family.
+#
+# WHY A SECOND MANIFEST
+# ---------------------
+# wikipedia_crawler.py walks its process list one family at a time (arrprocesses,
+# ids 201..223), so the campaign does not advance uniformly: a family is at 0% until
+# its process runs, then jumps to ~100%. A single global percentage hides that. The
+# metrics below are ordered exactly like the crawler's quick-mode priority list
+# (arrquickprocessids, stalest ITEM_TYPE first), so reading the report top to bottom
+# reads the campaign plan: what is done, what is running, what has not started.
+#
+# ITEM_TYPE CAVEAT
+# ----------------
+# T_WC_WIKIPEDIA_PAGE_LANG is unique on (ID_WIKIDATA, LANG), so ITEM_TYPE is
+# whatever the LAST process to write that row set. A Wikidata ID targeted by two
+# processes (a character reachable as both 205 and 218, an item also present in a
+# T2S list) is therefore counted once, under the family that touched it last. The
+# per-family counts still sum to the global total.
+#
+# A zero here means "the crawler has not reached this family yet", never "upstream
+# has no value". Families with a small denominator (season, keyword, death, …)
+# flip from 0% to ~100% in a single run.
+
+slug: wikipedia-sections-refresh-by-type
+title: "Wikipedia — refresh coverage by content family"
+source_db: WIKIPEDIA
+description: >
+  Per-ITEM_TYPE breakdown of the Wikipedia re-crawl since the fine-section split
+  went live on 2026-07-20 23:00 (Paris). Each metric is the share of that family's
+  Wikidata IDs whose page rows have been crawled at or after the switch. Families
+  are listed in the crawler's own priority order (stalest first).
+
+params:
+  cutoff: "2026-07-20 23:00:00"
+
+metrics:
+  - key: refresh_type_collection
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "collection (process 212)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'collection' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'collection' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'collection'"
+
+  - key: refresh_type_group
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "group (process 213)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'group' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'group' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'group'"
+
+  - key: refresh_type_death
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "death (process 214)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'death' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'death' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'death'"
+
+  - key: refresh_type_tmdbcollection
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "tmdbcollection (process 219)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'tmdbcollection' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'tmdbcollection' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'tmdbcollection'"
+
+  - key: refresh_type_keyword
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "keyword (process 221)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'keyword' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'keyword' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'keyword'"
+
+  - key: refresh_type_other
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "other (process 209)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'other' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'other' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'other'"
+
+  - key: refresh_type_item
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "item (process 203)"
+    long_desc: >
+      Distinct ID_WIKIDATA of ITEM_TYPE 'item' crawled at or after the switch, over
+      all of that family. Largest family after person/movie: sourced from
+      T_WC_WIKIDATA_ITEM_V1, so it dominates the global percentage.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'item' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'item'"
+
+  - key: refresh_type_serie
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "serie (process 204)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'serie' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'serie' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'serie'"
+
+  - key: refresh_type_list
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "list (process 210)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'list' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'list' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'list'"
+
+  - key: refresh_type_movement
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "movement (process 211)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'movement' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'movement' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'movement'"
+
+  - key: refresh_type_award
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "award (process 215)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'award' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'award' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'award'"
+
+  - key: refresh_type_nomination
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "nomination (process 216)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'nomination' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'nomination' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'nomination'"
+
+  - key: refresh_type_topic
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "topic (process 217)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'topic' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'topic' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'topic'"
+
+  - key: refresh_type_movie
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "movie (process 201)"
+    long_desc: >
+      Distinct ID_WIKIDATA of ITEM_TYPE 'movie' crawled at or after the switch, over
+      all of that family. The family with the most downstream impact: the French
+      pages also feed the «Fiche technique» format writeback into T_WC_TMDB_MOVIE.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'movie' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'movie'"
+
+  - key: refresh_type_character
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "character (processes 205 + 218)"
+    long_desc: >
+      Distinct ID_WIKIDATA of ITEM_TYPE 'character' crawled at or after the switch.
+      Two crawler processes write this same ITEM_TYPE (205 from the Wikidata
+      character table, 218 from the TMDb one), so the family is complete only when
+      both have run.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'character' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'character'"
+
+  - key: refresh_type_technical
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "technical (process 223)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'technical' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'technical' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'technical'"
+
+  - key: refresh_type_person
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "person (process 202)"
+    long_desc: >
+      Distinct ID_WIKIDATA of ITEM_TYPE 'person' crawled at or after the switch, over
+      all of that family. The longest-running process by far; it is the one the main
+      container keeps working while quick-mode containers handle the smaller families
+      in parallel.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'person' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'person'"
+
+  - key: refresh_type_episode
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "episode (process 220)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'episode' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'episode' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'episode'"
+
+  - key: refresh_type_season
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "season (process 222)"
+    long_desc: "Distinct ID_WIKIDATA of ITEM_TYPE 'season' crawled at or after the switch, over all of that family."
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'season' AND LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE ITEM_TYPE = 'season'"

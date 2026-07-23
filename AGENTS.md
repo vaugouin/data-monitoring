@@ -22,8 +22,10 @@ process liveness**. This repo tracks **campaign trend + completion + ETA** inste
 
 1. Each report is a manifest `reports/<slug>.yaml` — a bundle of metrics, each with
    read-only `done_sql` / `expected_sql` (and an optional `trend_sql` for a per-day
-   rate sparkline). A new campaign (TMDb, Wikidata, anything) is a **new manifest
-   file, not new code** — the design is source-agnostic.
+   rate sparkline, `rate_label` for the printed unit). A manifest-level `params:` map
+   is substituted into the SQL via `str.format()`, so a value repeated across metrics
+   (a campaign cutoff date) lives in one place. A new campaign (TMDb, Wikidata,
+   anything) is a **new manifest file, not new code** — the design is source-agnostic.
 2. `data-monitoring.py` runs the SQL, upserts one row per metric per day into
    `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders a self-contained HTML
    artifact `<slug>-YYYYMMDD.html` (+ daily `index` and `index-latest.html`) into
@@ -49,6 +51,27 @@ Cron slot ~**06:30 Paris** (06:00 is taken by selenium-tmdb), output redirected 
 `cron.log` so cron does not email every run. Output dir `shared_data/data-monitoring/`
 is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
 
+## Reports in place
+
+- `tmdb-tv-coverage` — TMDb TV season/episode backfill (V1).
+- `wikipedia-sections-refresh` + `wikipedia-sections-refresh-by-type` — how much of the
+  Wikidata universe has been re-crawled since `wikipedia-crawler`'s fine-section split
+  (H2+H3, WIKIPEDIA-CRAWLER-016) went live on **2026-07-20 23:00 Paris**. Anything last
+  crawled before that cutoff still holds coarse H2-only sections, so these two are pure
+  **freshness** reports, not gathering-completeness ones. Details and caveats live in
+  the manifest headers; a summary is in @README.md.
+
+Two traps when touching these manifests:
+
+- **The snapshot unique key does NOT include `REPORT_SLUG`** — it is
+  `(DAT_CREAT, SOURCE_DB, TABLE_NAME, METRIC_KEY)`. Two reports on the same table must
+  not reuse a metric key, or their daily rows silently overwrite each other. Run
+  `python data-monitoring.py --print-sql`: it flags the collision.
+- **`T_WC_WIKIPEDIA_PAGE_LANG_SECTION` is huge** (~170M rows). Only ever filter it on
+  the indexed `TIM_UPDATED` range; a `COUNT(DISTINCT ID_WIKIDATA)` over the whole table
+  would scan it entirely every night. The denominators above deliberately come from
+  the small `T_WC_WIKIPEDIA_PAGE_LANG` (~1.1M rows) instead.
+
 ## Conventions
 
 - **Add a tracking query with every new feature** — the ecosystem rule (see
@@ -58,9 +81,10 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
 - SQL naming follows the ecosystem (`T_WC_*`, `DAT_*`, `TIM_*`, `*_COUNT`, …).
 - Keep files UTF-8.
 - Test offline with `python data-monitoring.py --sample` (no DB, writes
-  `samples/`); validate the live path on the VPS where the DB is reachable.
+  `samples/`) and `--print-sql` (no DB, resolves `params:` and checks metric keys);
+  validate the live path on the VPS where the DB is reachable.
 
-**Last Updated**: 2026-06-23
+**Last Updated**: 2026-07-23
 
 ## Backlog (Nestor second-brain)
 

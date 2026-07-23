@@ -1,0 +1,188 @@
+# data-monitoring report manifest — Wikipedia refresh after the fine-section split.
+#
+# WHY THIS REPORT EXISTS
+# ----------------------
+# wikipedia-crawler WIKIPEDIA-CRAWLER-016 (commit 27c60a4) changed how a Wikipedia
+# page is cut into rows of T_WC_WIKIPEDIA_PAGE_LANG_SECTION: sections are now split
+# on H2 **and** H3 (H4 flattened inline), H3 rows carrying a composite
+# "Parent - Child" title. The change went live on **2026-07-20 23:00 (Paris)**.
+#
+# Stored content is only as good as its last crawl, so every Wikidata ID crawled
+# BEFORE that timestamp still holds coarse H2-only sections. This report answers a
+# single question: **how much of the Wikidata universe has been re-crawled since the
+# switch, and how fast is the rest going?**
+#
+# THE UNIVERSE (denominator)
+# --------------------------
+# "All Wikidata IDs" here means every ID_WIKIDATA that already has a row in
+# T_WC_WIKIPEDIA_PAGE_LANG — i.e. every entity for which the crawler has ever
+# resolved a Wikipedia page, all ITEM_TYPEs and both languages (en, fr) confounded.
+# That table is the crawler's own output ledger and is cheap to scan (~1.1M rows).
+#
+# Known limit: an entity that has NEVER been crawled at all is absent from the
+# table and therefore invisible to both numerator and denominator. Tracking the
+# full target universe would mean UNIONing the ~20 source queries the crawler
+# builds (T_WC_TMDB_MOVIE, T_WC_WIKIDATA_ITEM_V1 ~2.9M rows, the T_WC_T2S_* lists,
+# …) on every nightly run. If that gap matters, enable the commented-out
+# `wikipedia_universe_reached` metric at the bottom of this file and watch the
+# runtime.
+#
+# READING A ZERO
+# --------------
+# A 0 here never means "upstream has no value" — it means the crawler has not
+# reached that slice yet. Percentages climb only as the crawler walks its process
+# list; they never regress (LAST_CRAWLED_AT only moves forward).
+#
+# Per-family detail (movie / person / episode / …) lives in the sibling manifest
+# `wikipedia-sections-refresh-by-type.yaml`.
+
+slug: wikipedia-sections-refresh
+title: "Wikipedia — refresh coverage since the fine-section split"
+source_db: WIKIPEDIA
+description: >
+  Freshness of the stored Wikipedia content after the H2+H3 fine-section split went
+  live on 2026-07-20 23:00 (Paris). Anything last crawled before that timestamp
+  still holds the old coarse H2-only sections. Denominator = every Wikidata ID
+  known to T_WC_WIKIPEDIA_PAGE_LANG.
+
+# Single source of truth for the switch timestamp. Injected into every SQL below
+# via str.format(); change it here only (e.g. if the campaign is ever restarted
+# from a later baseline).
+params:
+  cutoff: "2026-07-20 23:00:00"
+
+metrics:
+  - key: wikipedia_entity_refresh
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "Wikidata IDs re-crawled since the switch"
+    long_desc: >
+      Distinct ID_WIKIDATA with at least one language row whose LAST_CRAWLED_AT is
+      at or after 2026-07-20 23:00, over every distinct ID_WIKIDATA the crawler has
+      ever resolved a page for. This is the headline "how much of the base is on the
+      new fine sections" figure. The sparkline is the per-day count of entities whose
+      LAST crawl falls on that day: because LAST_CRAWLED_AT is overwritten in place,
+      an entity re-crawled twice only shows on the later day, so the curve is a
+      last-touch rate, slightly under the true daily throughput.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG"
+    trend_sql: "SELECT DATE(LAST_CRAWLED_AT) AS CRAWL_DAY, COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE LAST_CRAWLED_AT >= '{cutoff}' GROUP BY CRAWL_DAY ORDER BY CRAWL_DAY"
+
+  - key: wikipedia_entity_refresh_all_langs
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "Wikidata IDs fully refreshed (every language row)"
+    long_desc: >
+      Stricter variant of wikipedia_entity_refresh: an entity counts only when ALL
+      of its language rows (en and fr when both exist) were crawled at or after the
+      switch — a NULL LAST_CRAWLED_AT counts as stale. The gap with the headline
+      metric is the set of half-refreshed entities, typically an entity touched while
+      the crawler was mid-chunk. Expect this one to trail by a few points.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(*) FROM (SELECT ID_WIKIDATA FROM T_WC_WIKIPEDIA_PAGE_LANG GROUP BY ID_WIKIDATA HAVING SUM(CASE WHEN LAST_CRAWLED_AT IS NULL OR LAST_CRAWLED_AT < '{cutoff}' THEN 1 ELSE 0 END) = 0) AS FULLY_REFRESHED"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG"
+
+  - key: wikipedia_page_lang_refresh
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "Page rows (Wikidata ID x language) re-crawled"
+    long_desc: >
+      Row-level view of the same campaign: (ID_WIKIDATA, LANG) pairs with
+      LAST_CRAWLED_AT at or after the switch, over all rows. This is the unit the
+      crawler actually processes — one fetch per entity per language — so its
+      sparkline is the honest throughput curve and the best basis for the ETA.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE LAST_CRAWLED_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG"
+    trend_sql: "SELECT DATE(LAST_CRAWLED_AT) AS CRAWL_DAY, COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE LAST_CRAWLED_AT >= '{cutoff}' GROUP BY CRAWL_DAY ORDER BY CRAWL_DAY"
+
+  - key: wikipedia_entity_refresh_success
+    table: T_WC_WIKIPEDIA_PAGE_LANG
+    description: "Wikidata IDs re-crawled AND parsed successfully"
+    long_desc: >
+      Distinct ID_WIKIDATA with LAST_SUCCESS_AT at or after the switch. LAST_CRAWLED_AT
+      is stamped on every attempt, LAST_SUCCESS_AT only when the MediaWiki parse call
+      returned HTTP 200 without an error envelope. A widening gap with
+      wikipedia_entity_refresh means the re-crawl is running but failing (maxlag
+      throttling, deleted pages, renamed titles) and the new sections are NOT being
+      written despite the timestamps moving.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE LAST_SUCCESS_AT >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG"
+
+  - key: wikipedia_section_entity_refresh
+    table: T_WC_WIKIPEDIA_PAGE_LANG_SECTION
+    description: "Wikidata IDs whose stored sections were rewritten"
+    long_desc: >
+      The one metric that measures CONTENT rather than crawl bookkeeping: distinct
+      ID_WIKIDATA with at least one section row whose TIM_UPDATED is at or after the
+      switch — those rows, and only those, carry the H2+H3 fine split. Denominator is
+      the entities with an existing Wikipedia page (PAGE_EXISTS = 1), since an entity
+      whose page does not exist never gets section rows. It still cannot reach 100%:
+      a page that parses to zero extractable sections has its rows deleted rather
+      than rewritten. Read the last few points, not the absolute ceiling.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG_SECTION WHERE TIM_UPDATED >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE PAGE_EXISTS = 1"
+
+  - key: wikipedia_fine_section_split_share
+    table: T_WC_WIKIPEDIA_PAGE_LANG_SECTION
+    description: "Share of rewritten sections that are H3 sub-sections"
+    long_desc: >
+      Signature check, not a completion target: among the section rows written since
+      the switch, the share whose TITLE matches the composite "Parent - Child" shape
+      the H3 splitter produces. A value stuck near zero would mean the deployed image
+      is still the pre-016 build even though the crawler is running. The match is a
+      heuristic (a genuine H2 title containing " - " counts as a false positive), and
+      the natural level depends on how sub-sectioned the pages of the family being
+      crawled are, so read the trend, not the absolute number. warn_below is set very
+      low deliberately.
+    warn_below: 5
+    rate_label: "sections/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG_SECTION WHERE TIM_UPDATED >= '{cutoff}' AND TITLE LIKE '% - %'"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG_SECTION WHERE TIM_UPDATED >= '{cutoff}'"
+
+# --- optional, OFF by default ------------------------------------------------
+# True-universe coverage: counts the Wikidata IDs the crawler TARGETS (its ~20
+# source queries), not just those it has already written a page row for. It is the
+# only way to see entities never crawled at all, but the denominator UNIONs several
+# large tables (T_WC_WIKIDATA_ITEM_V1 alone is ~2.9M rows) on every nightly run.
+# Uncomment only after timing it manually on the VPS.
+#
+#  - key: wikipedia_universe_reached
+#    table: T_WC_WIKIPEDIA_PAGE_LANG
+#    description: "Target Wikidata IDs reached since the switch"
+#    long_desc: >
+#      Distinct target IDs (all crawler source tables) with a page row crawled at or
+#      after the switch, over all distinct target IDs. Unlike the metrics above this
+#      one counts entities the crawler has never touched. Expensive: verify the
+#      runtime before enabling.
+#    warn_below: 50
+#    rate_label: "Wikidata IDs/day"
+#    done_sql: >
+#      SELECT COUNT(DISTINCT P.ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG P
+#      WHERE P.LAST_CRAWLED_AT >= '{cutoff}'
+#    expected_sql: >
+#      SELECT COUNT(*) FROM (
+#        SELECT ID_WIKIDATA FROM T_WC_TMDB_MOVIE      WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_TMDB_PERSON     WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_TMDB_SERIE      WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_TMDB_EPISODE    WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_TMDB_SEASON     WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_TMDB_CHARACTER  WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_TMDB_COLLECTION WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_TMDB_KEYWORD    WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_WIKIDATA_ITEM_V1 WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$'
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_LIST       WHERE ID_WIKIDATA <> ''
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_MOVEMENT   WHERE ID_WIKIDATA <> ''
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_COLLECTION WHERE ID_WIKIDATA <> ''
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_GROUP      WHERE ID_WIKIDATA <> ''
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_DEATH      WHERE ID_WIKIDATA <> ''
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_AWARD      WHERE ID_WIKIDATA <> ''
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_NOMINATION WHERE ID_WIKIDATA <> ''
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_TOPIC      WHERE ID_WIKIDATA <> ''
+#        UNION SELECT ID_WIKIDATA FROM T_WC_T2S_TECHNICAL  WHERE ID_WIKIDATA <> ''
+#      ) AS TARGET_UNIVERSE

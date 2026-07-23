@@ -26,3 +26,7 @@ Thumbs.db
 # Logs / runtime
 *.log
 cron.log
+
+# Claude Code / agent local tooling
+.claude/
+.agents/

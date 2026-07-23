@@ -89,8 +89,11 @@ def _metric_card(m):
     eta = _eta(m.get("done"), m.get("expected"), m.get("daily_rate"))
     trend = m.get("trend") or []
     kind = m.get("trend_kind", "pct")
-    rate_label = "episodes/day" if "episode" in m["key"] else (
-        "seasons/day" if "season" in m["key"] else "per day")
+    # A manifest may name the unit explicitly (`rate_label:`); otherwise fall back
+    # to the original key-sniffing default.
+    rate_label = m.get("rate_label") or (
+        "episodes/day" if "episode" in m["key"] else (
+            "seasons/day" if "season" in m["key"] else "per day"))
     return f"""
     <section class="card">
       <div class="card-head">

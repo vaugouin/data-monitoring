@@ -50,17 +50,32 @@ def load_manifest(path):
         return yaml.safe_load(fh)
 
 
+def _sql(metric, key, params):
+    """Metric SQL with the manifest-level `params:` substituted in.
+
+    A manifest that declares `params:` may write `{name}` placeholders in its SQL —
+    used to keep a value repeated across many metrics (a campaign cutoff date, say)
+    in one place. Without `params:` the SQL is passed through untouched, so existing
+    manifests keep working even if they contain braces.
+    """
+    sql = metric.get(key)
+    if sql and params:
+        sql = sql.format(**params)
+    return sql
+
+
 def run_report(conn, manifest, run_dt):
     """Execute every metric, persist a snapshot, return the result rows for render."""
     import db
     slug = manifest["slug"]
     source_db = manifest.get("source_db", SOURCE_DEFAULT)
+    params = manifest.get("params") or {}
     dat = run_dt.date()
     tim = run_dt.strftime("%Y-%m-%d %H:%M:%S")
     results = []
     for order, m in enumerate(manifest["metrics"], start=1):
-        done = db.scalar(conn, m["done_sql"])
-        expected = db.scalar(conn, m["expected_sql"])
+        done = db.scalar(conn, _sql(m, "done_sql", params))
+        expected = db.scalar(conn, _sql(m, "expected_sql", params))
         pct = _pct(done, expected)
 
         # Daily rate + trend. A metric with trend_sql (volume-fill) gets its real
@@ -68,7 +83,7 @@ def run_report(conn, manifest, run_dt):
         # history. Completion metrics have no per-day source, so the rate is the
         # delta vs the previous snapshot and the trend is the % history.
         if m.get("trend_sql"):
-            pairs = db.fetch_pairs(conn, m["trend_sql"])
+            pairs = db.fetch_pairs(conn, _sql(m, "trend_sql", params))
             trend = [(str(a), b) for (a, b) in pairs]
             trend_kind = "rate"
             daily_rate = pairs[-1][1] if pairs else None
@@ -97,6 +112,7 @@ def run_report(conn, manifest, run_dt):
             "long_desc": m.get("long_desc"), "warn_below": m.get("warn_below", 50),
             "done": done, "expected": expected, "pct": pct, "daily_rate": daily_rate,
             "trend": trend, "trend_kind": trend_kind,
+            "rate_label": m.get("rate_label"),
         })
     return results
 
@@ -156,7 +172,82 @@ def prune(run_dt):
 
 # --- sample mode: render the UI from seeded numbers, no DB, no writes -------
 
+def _write_sample(slug, report, results, generated_at, filename):
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples")
+    os.makedirs(out_dir, exist_ok=True)
+    doc = render.render_report(report, results, generated_at, "sample / no DB")
+    path = os.path.join(out_dir, filename)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(doc)
+    print(f"wrote {path}")
+
+
+def _sample_wikipedia_refresh():
+    """Seeded preview of the wikipedia-sections-refresh report.
+
+    Mirrors the real manifest's metric keys and wording so the rendering of a
+    just-started campaign (low percentages, short trend) can be checked offline.
+    """
+    report = {
+        "slug": "wikipedia-sections-refresh",
+        "title": "Wikipedia — refresh coverage since the fine-section split",
+        "description": ("Freshness of the stored Wikipedia content after the H2+H3 fine-section "
+                        "split went live on 2026-07-20 23:00 (Paris). SAMPLE DATA — numbers are "
+                        "illustrative."),
+    }
+    base = datetime.date(2026, 7, 21)
+    ndays = 3
+    ent_rate = [(str(base + datetime.timedelta(days=i)), 11800 + i * 900) for i in range(ndays)]
+    page_rate = [(str(base + datetime.timedelta(days=i)), 21400 + i * 1600) for i in range(ndays)]
+    pct_hist = [(str(base + datetime.timedelta(days=i)), round(2.1 + i * 2.0, 2)) for i in range(ndays)]
+    results = [
+        {"key": "wikipedia_entity_refresh", "description": "Wikidata IDs re-crawled since the switch",
+         "long_desc": "Distinct ID_WIKIDATA with a language row crawled at or after 2026-07-20 23:00, "
+                      "over every ID the crawler has resolved a page for.",
+         "warn_below": 50, "rate_label": "Wikidata IDs/day",
+         "done": 37900, "expected": 566300, "pct": 6.69,
+         "daily_rate": ent_rate[-1][1], "trend": ent_rate, "trend_kind": "rate"},
+        {"key": "wikipedia_entity_refresh_all_langs", "description": "Wikidata IDs fully refreshed (every language row)",
+         "long_desc": "Stricter variant: every language row of the entity crawled at or after the switch.",
+         "warn_below": 50, "rate_label": "Wikidata IDs/day",
+         "done": 35100, "expected": 566300, "pct": 6.20,
+         "daily_rate": 11200, "trend": pct_hist, "trend_kind": "pct"},
+        {"key": "wikipedia_page_lang_refresh", "description": "Page rows (Wikidata ID x language) re-crawled",
+         "long_desc": "Row-level view: (ID_WIKIDATA, LANG) pairs crawled at or after the switch. The unit "
+                      "the crawler actually processes, so the best basis for the ETA.",
+         "warn_below": 50, "rate_label": "pages/day",
+         "done": 69300, "expected": 1132600, "pct": 6.12,
+         "daily_rate": page_rate[-1][1], "trend": page_rate, "trend_kind": "rate"},
+        {"key": "wikipedia_entity_refresh_success", "description": "Wikidata IDs re-crawled AND parsed successfully",
+         "long_desc": "LAST_SUCCESS_AT at or after the switch. A widening gap with the headline metric "
+                      "means the re-crawl runs but fails, and no new sections are written.",
+         "warn_below": 50, "rate_label": "Wikidata IDs/day",
+         "done": 36800, "expected": 566300, "pct": 6.50,
+         "daily_rate": 11500, "trend": pct_hist, "trend_kind": "pct"},
+        {"key": "wikipedia_section_entity_refresh", "description": "Wikidata IDs whose stored sections were rewritten",
+         "long_desc": "The content metric: entities with at least one section row rewritten since the "
+                      "switch — those rows carry the H2+H3 fine split.",
+         "warn_below": 50, "rate_label": "Wikidata IDs/day",
+         "done": 34200, "expected": 548900, "pct": 6.23,
+         "daily_rate": 10900, "trend": pct_hist, "trend_kind": "pct"},
+        {"key": "wikipedia_fine_section_split_share", "description": "Share of rewritten sections that are H3 sub-sections",
+         "long_desc": "Signature check, not a completion target: share of the sections written since the "
+                      "switch whose TITLE has the composite 'Parent - Child' shape.",
+         "warn_below": 5, "rate_label": "sections/day",
+         "done": 402700, "expected": 1284100, "pct": 31.36,
+         "daily_rate": 128000, "trend": [(d, round(30.5 + i * 0.4, 2)) for i, (d, _) in enumerate(pct_hist)],
+         "trend_kind": "pct"},
+    ]
+    _write_sample("wikipedia-sections-refresh", report, results,
+                  "2026-07-23 06:30 (SAMPLE)", "wikipedia-sections-refresh-20260723.html")
+
+
 def _sample():
+    _sample_tmdb_tv()
+    _sample_wikipedia_refresh()
+
+
+def _sample_tmdb_tv():
     run_dt = datetime.datetime(2026, 6, 23, 6, 30)
     report = {
         "slug": "tmdb-tv-coverage",
@@ -195,33 +286,66 @@ def _sample():
          "warn_below": 50, "done": 198400, "expected": 232900, "pct": 85.19,
          "daily_rate": se_rate[-1][1], "trend": se_rate, "trend_kind": "rate"},
     ]
-    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples")
-    os.makedirs(out_dir, exist_ok=True)
-    doc = render.render_report(report, results, "2026-06-23 06:30 (SAMPLE)", "sample / no DB")
-    path = os.path.join(out_dir, "tmdb-tv-coverage-20260623.html")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(doc)
-    print(f"wrote {path}")
+    _write_sample("tmdb-tv-coverage", report, results,
+                  "2026-06-23 06:30 (SAMPLE)", "tmdb-tv-coverage-20260623.html")
+
+
+def _find_manifests(report=None):
+    manifests = sorted(glob.glob(os.path.join(REPORTS_DIR, "*.yaml")))
+    if report:
+        manifests = [p for p in manifests
+                     if os.path.splitext(os.path.basename(p))[0] == report]
+        if not manifests:
+            sys.exit(f"no manifest for report '{report}' in {REPORTS_DIR}")
+    return manifests
+
+
+def _print_sql(report=None):
+    """Dry run: parse the manifests and print every metric's resolved SQL.
+
+    No DB needed — this is how a new manifest (placeholders substituted, YAML well
+    formed, metric keys unique) is checked before it reaches the VPS.
+    """
+    seen = {}
+    for path in _find_manifests(report):
+        manifest = load_manifest(path)
+        params = manifest.get("params") or {}
+        print(f"\n=== {manifest['slug']} ({len(manifest['metrics'])} metrics, "
+              f"source_db={manifest.get('source_db', SOURCE_DEFAULT)}) ===")
+        for m in manifest["metrics"]:
+            # METRIC_KEY is part of the snapshot unique key together with
+            # (DAT_CREAT, SOURCE_DB, TABLE_NAME) — a duplicate would silently
+            # overwrite another metric's row.
+            dupkey = (manifest.get("source_db", SOURCE_DEFAULT), m["table"], m["key"])
+            if dupkey in seen:
+                print(f"  !! DUPLICATE metric key {m['key']} on {m['table']} "
+                      f"(also in {seen[dupkey]}) — snapshot rows would collide")
+            seen[dupkey] = manifest["slug"]
+            print(f"\n  [{m['key']}] {m['description']}")
+            for field in ("done_sql", "expected_sql", "trend_sql"):
+                if m.get(field):
+                    print(f"    {field}: {_sql(m, field, params)}")
 
 
 def main():
     ap = argparse.ArgumentParser(description="data-monitoring report generator")
     ap.add_argument("--report", help="run a single report slug (default: all)")
     ap.add_argument("--sample", action="store_true", help="render a seeded sample, no DB")
+    ap.add_argument("--print-sql", action="store_true",
+                    help="print each metric's resolved SQL and exit, no DB")
     args = ap.parse_args()
 
     if args.sample:
         _sample()
         return
 
+    if args.print_sql:
+        _print_sql(args.report)
+        return
+
     import db
     run_dt = _now()
-    manifests = sorted(glob.glob(os.path.join(REPORTS_DIR, "*.yaml")))
-    if args.report:
-        manifests = [p for p in manifests
-                     if os.path.splitext(os.path.basename(p))[0] == args.report]
-        if not manifests:
-            sys.exit(f"no manifest for report '{args.report}' in {REPORTS_DIR}")
+    manifests = _find_manifests(args.report)
 
     # Fail loudly rather than emit an empty index — a missing reports/ dir in the
     # container is a deploy error, not a no-op.
