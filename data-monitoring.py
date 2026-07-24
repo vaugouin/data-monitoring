@@ -242,9 +242,68 @@ def _sample_wikipedia_refresh():
                   "2026-07-23 06:30 (SAMPLE)", "wikipedia-sections-refresh-20260723.html")
 
 
+def _sample_tmdb_neighbours():
+    """Seeded preview of the tmdb-neighbours-backfill report.
+
+    Mirrors the manifest's metric keys and wording so the two-angle layout
+    (re-crawl progress vs table fill) can be checked offline.
+    """
+    report = {
+        "slug": "tmdb-neighbours-backfill",
+        "title": "TMDb — similar & recommendations backfill",
+        "description": ("Progress of the TMDb similar / recommendations backfill (TMDB-CRAWLER-022/023), "
+                        "live since 2026-07-07 ~16:00 (Paris). SAMPLE DATA — numbers are illustrative."),
+    }
+    base = datetime.date(2026, 7, 7)
+    ndays = 17
+    mv_rate = [(str(base + datetime.timedelta(days=i)), 26000 + (i % 4) * 3000 + i * 400) for i in range(ndays)]
+    se_rate = [(str(base + datetime.timedelta(days=i)), 3200 + (i % 3) * 300 + i * 40) for i in range(ndays)]
+    row_rate = [(str(base + datetime.timedelta(days=i)), 210000 + (i % 5) * 12000) for i in range(ndays)]
+    row_rate_se = [(str(base + datetime.timedelta(days=i)), 41000 + (i % 5) * 2600) for i in range(ndays)]
+    results = [
+        {"key": "movie_recrawl_progress", "description": "Movies re-crawled since the feature shipped",
+         "long_desc": "Non-deleted movies whose TIM_UPDATED is at or after 2026-07-07 16:00, over all "
+                      "non-deleted movies. The true completion signal; the sparkline is the best ETA basis.",
+         "warn_below": 50, "rate_label": "movies/day",
+         "done": 486300, "expected": 912400, "pct": 53.30,
+         "daily_rate": mv_rate[-1][1], "trend": mv_rate, "trend_kind": "rate"},
+        {"key": "serie_recrawl_progress", "description": "Series re-crawled since the feature shipped",
+         "long_desc": "Series mirror; far fewer than movies, so this half typically finishes first.",
+         "warn_below": 50, "rate_label": "series/day",
+         "done": 138200, "expected": 204100, "pct": 67.71,
+         "daily_rate": se_rate[-1][1], "trend": se_rate, "trend_kind": "rate"},
+        {"key": "movie_similar_fill", "description": "Movies with a stored 'similar' set",
+         "long_desc": "Distinct ID_MOVIE in T_WC_TMDB_MOVIE_SIMILAR over all non-deleted movies. Cannot "
+                      "reach 100%: TMDb returns no similar set for many obscure titles.",
+         "warn_below": 30, "rate_label": "rows/day",
+         "done": 372800, "expected": 912400, "pct": 40.86,
+         "daily_rate": row_rate[-1][1], "trend": row_rate, "trend_kind": "rate"},
+        {"key": "movie_recommendation_fill", "description": "Movies with a stored 'recommendations' set",
+         "long_desc": "Distinct ID_MOVIE in T_WC_TMDB_MOVIE_RECOMMENDATION. Sparser than similar, so it "
+                      "sits below movie_similar_fill for the same crawl progress.",
+         "warn_below": 30, "rate_label": "rows/day",
+         "done": 331500, "expected": 912400, "pct": 36.33,
+         "daily_rate": row_rate[-1][1] - 40000, "trend": [(d, v - 40000) for d, v in row_rate], "trend_kind": "rate"},
+        {"key": "serie_similar_fill", "description": "Series with a stored 'similar' set",
+         "long_desc": "Distinct ID_SERIE in T_WC_TMDB_SERIE_SIMILAR; series mirror of movie_similar_fill.",
+         "warn_below": 30, "rate_label": "rows/day",
+         "done": 96400, "expected": 204100, "pct": 47.23,
+         "daily_rate": row_rate_se[-1][1], "trend": row_rate_se, "trend_kind": "rate"},
+        {"key": "serie_recommendation_fill", "description": "Series with a stored 'recommendations' set",
+         "long_desc": "Distinct ID_SERIE in T_WC_TMDB_SERIE_RECOMMENDATION; series mirror of "
+                      "movie_recommendation_fill.",
+         "warn_below": 30, "rate_label": "rows/day",
+         "done": 88900, "expected": 204100, "pct": 43.56,
+         "daily_rate": row_rate_se[-1][1] - 6000, "trend": [(d, v - 6000) for d, v in row_rate_se], "trend_kind": "rate"},
+    ]
+    _write_sample("tmdb-neighbours-backfill", report, results,
+                  "2026-07-24 06:30 (SAMPLE)", "tmdb-neighbours-backfill-20260724.html")
+
+
 def _sample():
     _sample_tmdb_tv()
     _sample_wikipedia_refresh()
+    _sample_tmdb_neighbours()
 
 
 def _sample_tmdb_tv():

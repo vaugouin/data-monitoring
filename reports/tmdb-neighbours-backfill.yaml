@@ -1,0 +1,161 @@
+# data-monitoring report manifest — TMDb similar / recommendations backfill.
+#
+# WHY THIS REPORT EXISTS
+# ----------------------
+# tmdb-crawler TMDB-CRAWLER-022 (movies) and -023 (series) started filling four
+# "grounded neighbour" tables from the TMDb /similar and /recommendations
+# endpoints, live since **2026-07-07 ~16:00 (Paris)**:
+#   T_WC_TMDB_MOVIE_SIMILAR         (ID_MOVIE -> ID_MOVIE_SIMILAR)
+#   T_WC_TMDB_MOVIE_RECOMMENDATION  (ID_MOVIE -> ID_MOVIE_RECOMMENDED)
+#   T_WC_TMDB_SERIE_SIMILAR         (ID_SERIE -> ID_SERIE_SIMILAR)
+#   T_WC_TMDB_SERIE_RECOMMENDATION  (ID_SERIE -> ID_SERIE_RECOMMENDED)
+#
+# The neighbours are fetched inside f_tmdbmovietosqleverything /
+# f_tmdbserietosqleverything, i.e. as part of the crawler's FULL entity re-crawl.
+# That re-crawl is driven by the ~30-day refresh loop (tmdb-crawler.py: it selects
+# entities whose TIM_UPDATED is older than 30 days, stalest first), so the backfill
+# is complete only once every movie and series has cycled through that loop since
+# the feature went live. This report answers: **how far through that re-crawl are
+# we, and how fast is the rest going?**
+#
+# TWO ANGLES, IN ORDER
+# --------------------
+# 1. RE-CRAWL PROGRESS (the completion + ETA story). Denominator = every non-deleted
+#    row of T_WC_TMDB_MOVIE / T_WC_TMDB_SERIE. Numerator = those with TIM_UPDATED at
+#    or after the switch. f_sqlupdatearray always rewrites TIM_UPDATED on a full
+#    crawl, and the same crawl fetches the neighbours, so this is the honest "the
+#    entity has been re-crawled since the feature shipped" signal, independent of
+#    whether TMDb actually returned any neighbour for it. THIS is the metric to read
+#    for completion.
+#
+# 2. TABLE FILL (the direct view of the four tables the user named). Distinct source
+#    entities that now carry at least one stored neighbour, over the same
+#    denominator. It CANNOT reach 100%: TMDb returns no similar/recommended set for
+#    many obscure or very recent titles, and those entities are re-crawled but write
+#    no row. So a fill metric plateauing well under the re-crawl metric is normal and
+#    means "these titles have no neighbours upstream", not "not crawled yet". The
+#    tables are brand new (created 2026-07-07), so every row already dates from the
+#    backfill; no cutoff filter is needed on the fill counts.
+#
+# READING A ZERO
+# --------------
+# A 0 (or a low fill %) never means a crawler miss on its own. For the re-crawl
+# metrics it means the entity has not cycled through the 30-day loop yet; for the
+# fill metrics it usually means TMDb has no neighbour set for that title. The
+# re-crawl percentages only climb (TIM_UPDATED moves forward), they never regress.
+#
+# COST
+# ----
+# Every denominator is a COUNT over T_WC_TMDB_MOVIE / T_WC_TMDB_SERIE served by the
+# DELETED index; every numerator hits the indexed TIM_UPDATED range or the
+# (ID_MOVIE|ID_SERIE)-leading unique key on the small neighbour tables (<600k rows).
+# All scans stay cheap.
+
+slug: tmdb-neighbours-backfill
+title: "TMDb — similar & recommendations backfill"
+source_db: TMDB
+description: >
+  Progress of the TMDb similar / recommendations backfill (TMDB-CRAWLER-022 for
+  movies, -023 for series), live since 2026-07-07 ~16:00 (Paris). The neighbours
+  are fetched inside the crawler's full entity re-crawl, so the backfill completes
+  once every movie and series has cycled through the ~30-day refresh loop. Re-crawl
+  progress is the completion signal; the four table-fill metrics are the direct view
+  of the tables and structurally cannot reach 100%.
+
+# Single source of truth for the feature go-live timestamp. Injected into the SQL
+# via str.format(); change it here only.
+params:
+  cutoff: "2026-07-07 16:00:00"
+
+metrics:
+  # --- 1. re-crawl progress: the completion + ETA story ----------------------
+  - key: movie_recrawl_progress
+    table: T_WC_TMDB_MOVIE
+    description: "Movies re-crawled since the feature shipped"
+    long_desc: >
+      Non-deleted movies whose TIM_UPDATED is at or after 2026-07-07 16:00, over all
+      non-deleted movies. Because the neighbour fetch lives inside the full
+      re-crawl (f_tmdbmovietosqleverything), this is the true completion signal for
+      the movie half of the backfill — it counts an entity even when TMDb returned
+      no neighbour for it. The sparkline is the per-day count of movies whose LAST
+      crawl fell on that day; TIM_UPDATED is overwritten in place, so a movie
+      re-crawled twice shows only on the later day and the curve reads slightly under
+      the true daily throughput. This sparkline is the best basis for the ETA.
+    warn_below: 50
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE WHERE DELETED = 0 AND TIM_UPDATED >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE WHERE DELETED = 0"
+    trend_sql: "SELECT DATE(TIM_UPDATED) AS CRAWL_DAY, COUNT(*) FROM T_WC_TMDB_MOVIE WHERE DELETED = 0 AND TIM_UPDATED >= '{cutoff}' GROUP BY CRAWL_DAY ORDER BY CRAWL_DAY"
+
+  - key: serie_recrawl_progress
+    table: T_WC_TMDB_SERIE
+    description: "Series re-crawled since the feature shipped"
+    long_desc: >
+      Series mirror of movie_recrawl_progress: non-deleted series with TIM_UPDATED at
+      or after the switch, over all non-deleted series (TMDB-CRAWLER-023). The
+      completion signal for the series half of the backfill. Series are far fewer
+      than movies, so this half typically finishes first.
+    warn_below: 50
+    rate_label: "series/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE DELETED = 0 AND TIM_UPDATED >= '{cutoff}'"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE DELETED = 0"
+    trend_sql: "SELECT DATE(TIM_UPDATED) AS CRAWL_DAY, COUNT(*) FROM T_WC_TMDB_SERIE WHERE DELETED = 0 AND TIM_UPDATED >= '{cutoff}' GROUP BY CRAWL_DAY ORDER BY CRAWL_DAY"
+
+  # --- 2. table fill: the direct view of the four target tables --------------
+  - key: movie_similar_fill
+    table: T_WC_TMDB_MOVIE_SIMILAR
+    description: "Movies with a stored 'similar' set"
+    long_desc: >
+      Distinct ID_MOVIE present in T_WC_TMDB_MOVIE_SIMILAR, over all non-deleted
+      movies. Similar is TMDb's content-based (genres + keywords) neighbour set.
+      Cannot reach 100%: a movie re-crawled but for which TMDb returns an empty
+      similar list writes no row. Read the gap with movie_recrawl_progress as "movies
+      TMDb has no similar set for", not as a crawler miss. The sparkline counts
+      neighbour ROWS created per day (DAT_CREAT, insert-only), so it is the raw gather
+      curve of the table, not an entity curve.
+    warn_below: 30
+    rate_label: "rows/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_MOVIE) FROM T_WC_TMDB_MOVIE_SIMILAR"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE WHERE DELETED = 0"
+    trend_sql: "SELECT DAT_CREAT, COUNT(*) FROM T_WC_TMDB_MOVIE_SIMILAR WHERE DAT_CREAT IS NOT NULL GROUP BY DAT_CREAT ORDER BY DAT_CREAT"
+
+  - key: movie_recommendation_fill
+    table: T_WC_TMDB_MOVIE_RECOMMENDATION
+    description: "Movies with a stored 'recommendations' set"
+    long_desc: >
+      Distinct ID_MOVIE present in T_WC_TMDB_MOVIE_RECOMMENDATION, over all non-deleted
+      movies. Recommendations is TMDb's behaviour-based set, distinct from similar and
+      often sparser, so this fill sits below movie_similar_fill for the same crawl
+      progress. Same "cannot reach 100%" caveat. Sparkline = neighbour rows created
+      per day.
+    warn_below: 30
+    rate_label: "rows/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_MOVIE) FROM T_WC_TMDB_MOVIE_RECOMMENDATION"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE WHERE DELETED = 0"
+    trend_sql: "SELECT DAT_CREAT, COUNT(*) FROM T_WC_TMDB_MOVIE_RECOMMENDATION WHERE DAT_CREAT IS NOT NULL GROUP BY DAT_CREAT ORDER BY DAT_CREAT"
+
+  - key: serie_similar_fill
+    table: T_WC_TMDB_SERIE_SIMILAR
+    description: "Series with a stored 'similar' set"
+    long_desc: >
+      Distinct ID_SERIE present in T_WC_TMDB_SERIE_SIMILAR, over all non-deleted
+      series. Series mirror of movie_similar_fill; same "cannot reach 100%" caveat.
+      Sparkline = neighbour rows created per day.
+    warn_below: 30
+    rate_label: "rows/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_SERIE) FROM T_WC_TMDB_SERIE_SIMILAR"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE DELETED = 0"
+    trend_sql: "SELECT DAT_CREAT, COUNT(*) FROM T_WC_TMDB_SERIE_SIMILAR WHERE DAT_CREAT IS NOT NULL GROUP BY DAT_CREAT ORDER BY DAT_CREAT"
+
+  - key: serie_recommendation_fill
+    table: T_WC_TMDB_SERIE_RECOMMENDATION
+    description: "Series with a stored 'recommendations' set"
+    long_desc: >
+      Distinct ID_SERIE present in T_WC_TMDB_SERIE_RECOMMENDATION, over all non-deleted
+      series. Series mirror of movie_recommendation_fill; same "cannot reach 100%"
+      caveat. Sparkline = neighbour rows created per day.
+    warn_below: 30
+    rate_label: "rows/day"
+    done_sql: "SELECT COUNT(DISTINCT ID_SERIE) FROM T_WC_TMDB_SERIE_RECOMMENDATION"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE DELETED = 0"
+    trend_sql: "SELECT DAT_CREAT, COUNT(*) FROM T_WC_TMDB_SERIE_RECOMMENDATION WHERE DAT_CREAT IS NOT NULL GROUP BY DAT_CREAT ORDER BY DAT_CREAT"

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TMDb — similar &amp; recommendations backfill — 2026-07-24 06:30 (SAMPLE)</title>
+<style>
+  :root { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  body { margin: 0; background: #f5f7f9; color: #263238; }
+  header { background: #263238; color: #fff; padding: 20px 28px; }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header .meta { font-size: 12px; color: #b0bec5; }
+  .intro { padding: 16px 28px; font-size: 14px; color: #455a64; max-width: 70ch; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+           gap: 16px; padding: 0 28px 28px; }
+  .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .card-head h3 { margin: 0; font-size: 15px; }
+  .metric-key { font-size: 11px; color: #90a4ae; font-family: ui-monospace, monospace; }
+  .pct { font-size: 30px; font-weight: 700; margin: 8px 0 4px; }
+  .bar { display: block; }
+  .counts { font-size: 13px; color: #455a64; margin: 8px 0; }
+  .trend { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .trend-label { font-size: 11px; color: #90a4ae; }
+  .long-desc { font-size: 12px; color: #607d8b; margin: 8px 0 0; line-height: 1.4; }
+  .muted { color: #90a4ae; font-size: 11px; }
+  footer { padding: 16px 28px; font-size: 11px; color: #90a4ae; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TMDb — similar &amp; recommendations backfill</h1>
+  <div class="meta">Generated 2026-07-24 06:30 (SAMPLE) · sample / no DB · report slug <code>tmdb-neighbours-backfill</code></div>
+</header>
+<div class="intro">Progress of the TMDb similar / recommendations backfill (TMDB-CRAWLER-022/023), live since 2026-07-07 ~16:00 (Paris). SAMPLE DATA — numbers are illustrative.</div>
+<div class="grid">
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Movies re-crawled since the feature shipped</h3>
+        <span class="metric-key">movie_recrawl_progress</span>
+      </div>
+      <div class="pct">53.3%</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="53.30" height="22" rx="3" fill="#f0ad4e"/><line x1="50" y1="0" x2="50" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      <div class="counts">
+        <strong>486 300</strong> done
+        / 912 400 expected
+        &nbsp;·&nbsp; +32 400 movies/day
+        &nbsp;·&nbsp; ~13 days at the current rate <span class="muted">(rough projection)</span>
+      </div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#1976d2" stroke-width="1.5" points="0.0,40.0 13.8,30.9 27.5,21.9 41.2,12.8 55.0,35.7 68.8,26.7 82.5,17.6 96.2,8.5 110.0,31.5 123.8,22.4 137.5,13.3 151.2,4.3 165.0,27.2 178.8,18.1 192.5,9.1 206.2,0.0 220.0,22.9"/></svg>
+        <span class="trend-label">daily rate</span>
+      </div>
+      <p class="long-desc">Non-deleted movies whose TIM_UPDATED is at or after 2026-07-07 16:00, over all non-deleted movies. The true completion signal; the sparkline is the best ETA basis.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Series re-crawled since the feature shipped</h3>
+        <span class="metric-key">serie_recrawl_progress</span>
+      </div>
+      <div class="pct">67.7%</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="67.71" height="22" rx="3" fill="#f0ad4e"/><line x1="50" y1="0" x2="50" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      <div class="counts">
+        <strong>138 200</strong> done
+        / 204 100 expected
+        &nbsp;·&nbsp; +4 140 series/day
+        &nbsp;·&nbsp; ~16 days at the current rate <span class="muted">(rough projection)</span>
+      </div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#1976d2" stroke-width="1.5" points="0.0,40.0 13.8,28.3 27.5,16.6 41.2,35.9 55.0,24.1 68.8,12.4 82.5,31.7 96.2,20.0 110.0,8.3 123.8,27.6 137.5,15.9 151.2,4.1 165.0,23.4 178.8,11.7 192.5,0.0 206.2,19.3 220.0,7.6"/></svg>
+        <span class="trend-label">daily rate</span>
+      </div>
+      <p class="long-desc">Series mirror; far fewer than movies, so this half typically finishes first.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Movies with a stored &#x27;similar&#x27; set</h3>
+        <span class="metric-key">movie_similar_fill</span>
+      </div>
+      <div class="pct">40.9%</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="40.86" height="22" rx="3" fill="#f0ad4e"/><line x1="30" y1="0" x2="30" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      <div class="counts">
+        <strong>372 800</strong> done
+        / 912 400 expected
+        &nbsp;·&nbsp; +222 000 rows/day
+        &nbsp;·&nbsp; ~2 days at the current rate <span class="muted">(rough projection)</span>
+      </div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#1976d2" stroke-width="1.5" points="0.0,40.0 13.8,30.0 27.5,20.0 41.2,10.0 55.0,0.0 68.8,40.0 82.5,30.0 96.2,20.0 110.0,10.0 123.8,0.0 137.5,40.0 151.2,30.0 165.0,20.0 178.8,10.0 192.5,0.0 206.2,40.0 220.0,30.0"/></svg>
+        <span class="trend-label">daily rate</span>
+      </div>
+      <p class="long-desc">Distinct ID_MOVIE in T_WC_TMDB_MOVIE_SIMILAR over all non-deleted movies. Cannot reach 100%: TMDb returns no similar set for many obscure titles.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Movies with a stored &#x27;recommendations&#x27; set</h3>
+        <span class="metric-key">movie_recommendation_fill</span>
+      </div>
+      <div class="pct">36.3%</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="36.33" height="22" rx="3" fill="#f0ad4e"/><line x1="30" y1="0" x2="30" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      <div class="counts">
+        <strong>331 500</strong> done
+        / 912 400 expected
+        &nbsp;·&nbsp; +182 000 rows/day
+        &nbsp;·&nbsp; ~3 days at the current rate <span class="muted">(rough projection)</span>
+      </div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#1976d2" stroke-width="1.5" points="0.0,40.0 13.8,30.0 27.5,20.0 41.2,10.0 55.0,0.0 68.8,40.0 82.5,30.0 96.2,20.0 110.0,10.0 123.8,0.0 137.5,40.0 151.2,30.0 165.0,20.0 178.8,10.0 192.5,0.0 206.2,40.0 220.0,30.0"/></svg>
+        <span class="trend-label">daily rate</span>
+      </div>
+      <p class="long-desc">Distinct ID_MOVIE in T_WC_TMDB_MOVIE_RECOMMENDATION. Sparser than similar, so it sits below movie_similar_fill for the same crawl progress.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Series with a stored &#x27;similar&#x27; set</h3>
+        <span class="metric-key">serie_similar_fill</span>
+      </div>
+      <div class="pct">47.2%</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="47.23" height="22" rx="3" fill="#f0ad4e"/><line x1="30" y1="0" x2="30" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      <div class="counts">
+        <strong>96 400</strong> done
+        / 204 100 expected
+        &nbsp;·&nbsp; +43 600 rows/day
+        &nbsp;·&nbsp; ~2 days at the current rate <span class="muted">(rough projection)</span>
+      </div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#1976d2" stroke-width="1.5" points="0.0,40.0 13.8,30.0 27.5,20.0 41.2,10.0 55.0,0.0 68.8,40.0 82.5,30.0 96.2,20.0 110.0,10.0 123.8,0.0 137.5,40.0 151.2,30.0 165.0,20.0 178.8,10.0 192.5,0.0 206.2,40.0 220.0,30.0"/></svg>
+        <span class="trend-label">daily rate</span>
+      </div>
+      <p class="long-desc">Distinct ID_SERIE in T_WC_TMDB_SERIE_SIMILAR; series mirror of movie_similar_fill.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Series with a stored &#x27;recommendations&#x27; set</h3>
+        <span class="metric-key">serie_recommendation_fill</span>
+      </div>
+      <div class="pct">43.6%</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="43.56" height="22" rx="3" fill="#f0ad4e"/><line x1="30" y1="0" x2="30" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      <div class="counts">
+        <strong>88 900</strong> done
+        / 204 100 expected
+        &nbsp;·&nbsp; +37 600 rows/day
+        &nbsp;·&nbsp; ~3 days at the current rate <span class="muted">(rough projection)</span>
+      </div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#1976d2" stroke-width="1.5" points="0.0,40.0 13.8,30.0 27.5,20.0 41.2,10.0 55.0,0.0 68.8,40.0 82.5,30.0 96.2,20.0 110.0,10.0 123.8,0.0 137.5,40.0 151.2,30.0 165.0,20.0 178.8,10.0 192.5,0.0 206.2,40.0 220.0,30.0"/></svg>
+        <span class="trend-label">daily rate</span>
+      </div>
+      <p class="long-desc">Distinct ID_SERIE in T_WC_TMDB_SERIE_RECOMMENDATION; series mirror of movie_recommendation_fill.</p>
+    </section>
+</div>
+<footer>
+  data-monitoring · read-only snapshot · history in <code>T_WC_DATA_MONITORING_SNAPSHOT</code>.
+  Percentages are an upper bound on what upstream exposes; a NULL/zero usually means the
+  source has no value, not a crawler miss. ETA is an interpretation, not a commitment.
+</footer>
+</body>
+</html>

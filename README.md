@@ -109,3 +109,29 @@ the switch, and how fast*.
 
 A zero in these reports never means "upstream has no value" — it means the crawler has
 not reached that slice yet.
+
+### `tmdb-neighbours-backfill`
+
+Progress of the TMDb **similar / recommendations** backfill (`tmdb-crawler`
+TMDB-CRAWLER-022 for movies, -023 for series), which fills four tables
+(`T_WC_TMDB_{MOVIE,SERIE}_{SIMILAR,RECOMMENDATION}`), live since **2026-07-07 ~16:00
+Paris**. The neighbours are fetched inside the crawler's *full* entity re-crawl
+(`f_tmdbmovietosqleverything` / `…serie…`), which is driven by the ~30-day refresh
+loop, so the backfill completes once every movie and series has cycled through that
+loop since the feature shipped.
+
+Two angles, in order:
+
+- **Re-crawl progress** (`movie_recrawl_progress`, `serie_recrawl_progress`) — the
+  completion + ETA story. Non-deleted entities with `TIM_UPDATED` at or after the
+  cutoff, over all non-deleted entities. `f_sqlupdatearray` always rewrites
+  `TIM_UPDATED` on a full crawl, so this counts an entity as done even when TMDb
+  returned no neighbour for it. **This is the metric to read for completion.**
+- **Table fill** (`*_similar_fill`, `*_recommendation_fill`) — the direct view of the
+  four tables: distinct source entities that now carry at least one stored neighbour.
+  It **cannot reach 100%** — TMDb has no neighbour set for many obscure or very recent
+  titles, which are re-crawled but write no row. A fill metric plateauing below the
+  re-crawl metric means "these titles have no neighbours upstream", not a crawler miss.
+
+The tables are brand new (created 2026-07-07), so every row already dates from the
+backfill; the fill counts need no cutoff filter.

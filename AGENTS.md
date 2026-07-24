@@ -60,6 +60,14 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
   crawled before that cutoff still holds coarse H2-only sections, so these two are pure
   **freshness** reports, not gathering-completeness ones. Details and caveats live in
   the manifest headers; a summary is in @README.md.
+- `tmdb-neighbours-backfill` — progress of the TMDb similar/recommendations backfill
+  (`tmdb-crawler` TMDB-CRAWLER-022/023) into `T_WC_TMDB_{MOVIE,SERIE}_{SIMILAR,RECOMMENDATION}`,
+  live since **2026-07-07 ~16:00 Paris**. Key modelling choice: the neighbours are
+  fetched inside the crawler's *full* re-crawl, so the true completion signal is
+  `T_WC_TMDB_{MOVIE,SERIE}.TIM_UPDATED >= cutoff` (the re-crawl-progress metrics), NOT a
+  count on the neighbour tables — a title re-crawled but with no TMDb neighbour writes
+  no row, so the four `*_fill` metrics structurally cannot reach 100%. Both angles are in
+  the manifest, re-crawl first.
 
 Two traps when touching these manifests:
 
