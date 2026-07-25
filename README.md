@@ -135,3 +135,27 @@ Two angles, in order:
 
 The tables are brand new (created 2026-07-07), so every row already dates from the
 backfill; the fill counts need no cutoff filter.
+
+### `tmdb-company-wikidata`
+
+Progress and quality of the TMDb **company → Wikidata** backfill (`tmdb-movie-preprocess`
+Process 63, TMDB-MOVIE-PREPROCESS-015). A long **rolling** campaign: each run searches
+at most 3000 companies (`ORDER BY TIM_WIKIPEDIA_SEARCH ASC`, never-searched first), and
+the real bottleneck is resolution, not throughput — so it runs for a long time and never
+trivially reaches 100%.
+
+State per eligible company (non-empty `NAME`, not deleted) in `T_WC_TMDB_COMPANY`: a
+match writes `ID_WIKIDATA` + `CONFIDENCE` + `TIM_WIKIPEDIA_SEARCH`; a miss writes only
+`TIM_WIKIPEDIA_SEARCH`; generic/brand-collision-risk matches are quarantined at the 0.50
+`CONFIDENCE` sentinel (usable floor is 0.9). Five metrics, all framed so **higher is
+better** (the bar-colour code reds out *below* a threshold):
+
+- `company_wikidata_attempted` — frontier coverage (searched / eligible), the ETA metric.
+- `company_wikidata_usable` — usable links (`CONFIDENCE >= 0.9`) / eligible.
+- `company_wikidata_linked` — any link / eligible; the gap with *usable* is the quarantine backlog.
+- `company_wikidata_match_rate` — links / searched: the direct read on the resolution bottleneck.
+- `company_wikidata_clean_link_share` — usable / linked: the inverse of the quarantine backlog.
+
+No cutoff (it is a current-state coverage snapshot). Low outcome values are not a crawler
+miss — most small companies simply have no Wikidata entity. When the "Wikidata ID
+everywhere" epic wires network / genre / character, clone this manifest per entity.

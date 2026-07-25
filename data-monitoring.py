@@ -300,10 +300,62 @@ def _sample_tmdb_neighbours():
                   "2026-07-24 06:30 (SAMPLE)", "tmdb-neighbours-backfill-20260724.html")
 
 
+def _sample_tmdb_company_wikidata():
+    """Seeded preview of the tmdb-company-wikidata report.
+
+    Mirrors the manifest's metric keys and wording so the all-upward framing
+    (coverage + match quality) can be checked offline.
+    """
+    report = {
+        "slug": "tmdb-company-wikidata",
+        "title": "TMDb — company Wikidata linking (Process 63)",
+        "description": ("Progress and quality of the TMDb company -> Wikidata backfill (Process 63, "
+                        "TMDB-MOVIE-PREPROCESS-015). SAMPLE DATA — numbers are illustrative."),
+    }
+    base = datetime.date(2026, 6, 25)
+    ndays = 30
+    search_rate = [(str(base + datetime.timedelta(days=i)), 3000 if i < 28 else 1800) for i in range(ndays)]
+    pct_cov = [(str(base + datetime.timedelta(days=i)), round(min(100.0, 12.0 + i * 3.0), 2)) for i in range(ndays)]
+    pct_usable = [(str(base + datetime.timedelta(days=i)), round(min(41.0, 6.0 + i * 1.2), 2)) for i in range(ndays)]
+    pct_match = [(str(base + datetime.timedelta(days=i)), round(min(58.0, 44.0 + i * 0.5), 2)) for i in range(ndays)]
+    pct_clean = [(str(base + datetime.timedelta(days=i)), round(min(62.0, 55.0 + i * 0.25), 2)) for i in range(ndays)]
+    results = [
+        {"key": "company_wikidata_attempted", "description": "Companies reached by the backfill",
+         "long_desc": "Eligible companies whose TIM_WIKIPEDIA_SEARCH is set, over all eligible companies. "
+                      "The frontier-coverage metric; sparkline = companies searched per day.",
+         "warn_below": 50, "rate_label": "companies/day",
+         "done": 78400, "expected": 86200, "pct": 90.95,
+         "daily_rate": search_rate[-1][1], "trend": search_rate, "trend_kind": "rate"},
+        {"key": "company_wikidata_usable", "description": "Companies with a usable Wikidata link",
+         "long_desc": "Eligible companies with a Wikidata id at CONFIDENCE >= 0.9, over all eligible "
+                      "companies. Cannot reach 100%: many small companies have no Wikidata entity.",
+         "warn_below": 20, "done": 34600, "expected": 86200, "pct": 40.14,
+         "daily_rate": None, "trend": pct_usable, "trend_kind": "pct"},
+        {"key": "company_wikidata_linked", "description": "Companies linked (usable + quarantine)",
+         "long_desc": "Eligible companies carrying any Wikidata id, quarantine included. The gap with the "
+                      "usable metric is the quarantine backlog.",
+         "warn_below": 25, "done": 55300, "expected": 86200, "pct": 64.15,
+         "daily_rate": None, "trend": pct_cov, "trend_kind": "pct"},
+        {"key": "company_wikidata_match_rate", "description": "Match rate among searched companies",
+         "long_desc": "Of the companies searched, the share that got a link. The direct read on the "
+                      "resolution bottleneck (acronyms, variants, special chars).",
+         "warn_below": 40, "done": 55300, "expected": 78400, "pct": 70.54,
+         "daily_rate": None, "trend": pct_match, "trend_kind": "pct"},
+        {"key": "company_wikidata_clean_link_share", "description": "Clean links (share not quarantined)",
+         "long_desc": "Of the linked companies, the share at usable confidence rather than quarantined at "
+                      "0.50. 100% = nothing waiting for review.",
+         "warn_below": 60, "done": 34600, "expected": 55300, "pct": 62.57,
+         "daily_rate": None, "trend": pct_clean, "trend_kind": "pct"},
+    ]
+    _write_sample("tmdb-company-wikidata", report, results,
+                  "2026-07-25 06:30 (SAMPLE)", "tmdb-company-wikidata-20260725.html")
+
+
 def _sample():
     _sample_tmdb_tv()
     _sample_wikipedia_refresh()
     _sample_tmdb_neighbours()
+    _sample_tmdb_company_wikidata()
 
 
 def _sample_tmdb_tv():

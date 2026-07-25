@@ -60,6 +60,15 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
   crawled before that cutoff still holds coarse H2-only sections, so these two are pure
   **freshness** reports, not gathering-completeness ones. Details and caveats live in
   the manifest headers; a summary is in @README.md.
+- `tmdb-company-wikidata` — progress + quality of the TMDb company→Wikidata backfill
+  (`tmdb-movie-preprocess` Process 63, TMDB-MOVIE-PREPROCESS-015). A long **rolling**
+  campaign (≤3000 companies/run, `TIM_WIKIPEDIA_SEARCH ASC`). Modelling: eligible universe
+  = non-empty `NAME` + not deleted (the crawler's own filter, kept DRY in `params.eligible`);
+  a match writes `ID_WIKIDATA`+`CONFIDENCE`+`TIM_WIKIPEDIA_SEARCH`, a miss writes only the
+  timestamp, quarantine = `CONFIDENCE` 0.50 sentinel (usable floor 0.9). All five metrics
+  are framed **higher-is-better** so the red-below-threshold colouring reads correctly —
+  the quarantine backlog and resolution gap appear as the complement of
+  `clean_link_share` / `match_rate`. No cutoff (current-state coverage, not freshness).
 - `tmdb-neighbours-backfill` — progress of the TMDb similar/recommendations backfill
   (`tmdb-crawler` TMDB-CRAWLER-022/023) into `T_WC_TMDB_{MOVIE,SERIE}_{SIMILAR,RECOMMENDATION}`,
   live since **2026-07-07 ~16:00 Paris**. Key modelling choice: the neighbours are

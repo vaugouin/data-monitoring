@@ -1,0 +1,144 @@
+# data-monitoring report manifest — TMDb company -> Wikidata linking (Process 63).
+#
+# WHY THIS REPORT EXISTS
+# ----------------------
+# tmdb-movie-preprocess TMDB-MOVIE-PREPROCESS-015 (Process 63,
+# TMDB_PREPROCESS_SCOPE=wikidata-companies) links every TMDb company to its Wikidata
+# entity. It is a LONG, ROLLING backfill: each run processes at most 3000 companies
+# (SELECT ... ORDER BY TIM_WIKIPEDIA_SEARCH ASC LIMIT 3000 — never-searched rows
+# first, then the oldest re-searched), and the real bottleneck is resolution, not
+# throughput (acronyms, subsidiary/variant names, special characters like "Canal+"
+# never reach the right entity with the title-only matcher). So it will run for a
+# long time and never trivially hit 100%. This report tracks both how far the
+# frontier has advanced and how good the matches are.
+#
+# THE STATE MACHINE (per eligible company)
+# ----------------------------------------
+# Eligible universe = companies with a non-empty NAME that are not deleted (exactly
+# the crawler's own selection filter). Process 63 writes back to T_WC_TMDB_COMPANY:
+#   - MATCH found     -> ID_WIKIDATA + WIKIDATA_LABEL + CONFIDENCE + TIM_WIKIPEDIA_SEARCH
+#   - NO match / error-> ONLY TIM_WIKIPEDIA_SEARCH (ID_WIKIDATA / CONFIDENCE stay NULL)
+# CONFIDENCE is the linker's real score (>= ~0.92 for real matches) EXCEPT
+# generic-only / brand-collision-risk hits, which are capped to the sentinel 0.50 to
+# QUARANTINE them for review. So, over the eligible universe:
+#   - not yet reached      : TIM_WIKIPEDIA_SEARCH IS NULL
+#   - reached (attempted)  : TIM_WIKIPEDIA_SEARCH IS NOT NULL
+#       - linked usable    : ID_WIKIDATA set AND CONFIDENCE >= 0.9  (downstream floor)
+#       - linked quarantine: ID_WIKIDATA set AND CONFIDENCE  < 0.9  (the 0.50 sentinel)
+#       - unmatched        : ID_WIKIDATA NULL  (the resolution gap)
+# A match always writes ID_WIKIDATA together with TIM_WIKIPEDIA_SEARCH, so
+# "ID_WIKIDATA is set" already implies "attempted".
+#
+# ALL METRICS POINT THE SAME WAY (higher = better)
+# ------------------------------------------------
+# data-monitoring colours a bar red BELOW warn_below, so every metric here is framed
+# so that up is good: coverage of the frontier, usable-link coverage, match rate
+# among searched, and clean-link share. The quarantine backlog and the resolution
+# gap are therefore read as the COMPLEMENT of company_wikidata_clean_link_share and
+# company_wikidata_match_rate respectively (100% = none left).
+#
+# READING A LOW VALUE
+# -------------------
+# For the coverage metric a low value means the rolling backfill has not reached
+# those companies yet. For the outcome metrics (usable, match_rate, clean_link_share)
+# a low value is not a crawler miss: most TMDb companies are small distributors or
+# imprints with NO Wikidata entity at all, so full linkage is structurally impossible
+# — read the trend and the match rate among SEARCHED companies, not an absolute 100%.
+#
+# NO CUTOFF: unlike the wikipedia / neighbours reports this is a coverage snapshot of
+# the current state, not a "since a switch" freshness one. Because the backfill is
+# rolling (it keeps re-searching the oldest rows), the daily search rate is the true
+# new-coverage rate only during the first full pass; after that it is a refresh rate.
+#
+# COST: T_WC_TMDB_COMPANY is small (tens of thousands of rows) and NAME / DELETED /
+# ID_WIKIDATA / CONFIDENCE / TIM_WIKIPEDIA_SEARCH are all indexed. Every scan is cheap.
+#
+# FUTURE: Process 63's allowlist is per-entity but only companies are wired today; the
+# "Wikidata ID everywhere" epic will replicate it to network / genre / character. When
+# that ships, clone this manifest per entity (same shape, different table/columns).
+
+slug: tmdb-company-wikidata
+title: "TMDb — company Wikidata linking (Process 63)"
+source_db: TMDB
+description: >
+  Progress and quality of the TMDb company -> Wikidata backfill (Process 63,
+  TMDB-MOVIE-PREPROCESS-015). A long rolling campaign (<=3000 companies/run, oldest
+  first) whose real bottleneck is resolution. Coverage tracks how far the frontier
+  has advanced; the outcome metrics track match quality. Every metric is framed so
+  higher is better.
+
+# Eligible-universe predicate, injected everywhere so it lives in one place. Mirrors
+# the crawler's own selection (NAME non-empty AND not deleted).
+params:
+  eligible: "NAME IS NOT NULL AND NAME <> '' AND (DELETED IS NULL OR DELETED = 0)"
+
+metrics:
+  - key: company_wikidata_attempted
+    table: T_WC_TMDB_COMPANY
+    description: "Companies reached by the backfill"
+    long_desc: >
+      Eligible companies whose TIM_WIKIPEDIA_SEARCH is set (searched at least once),
+      over all eligible companies. This is the frontier-coverage metric: it tells you
+      how much of the company universe the rolling backfill has touched, and its
+      sparkline (companies searched per day) is the best basis for the ETA of a full
+      first pass. After the first pass it keeps at ~100% while the crawler re-searches
+      the oldest rows.
+    warn_below: 50
+    rate_label: "companies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible} AND TIM_WIKIPEDIA_SEARCH IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible}"
+    trend_sql: "SELECT DATE(TIM_WIKIPEDIA_SEARCH) AS SEARCH_DAY, COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible} AND TIM_WIKIPEDIA_SEARCH IS NOT NULL GROUP BY SEARCH_DAY ORDER BY SEARCH_DAY"
+
+  - key: company_wikidata_usable
+    table: T_WC_TMDB_COMPANY
+    description: "Companies with a usable Wikidata link"
+    long_desc: >
+      Eligible companies carrying a Wikidata id at usable confidence (CONFIDENCE >= 0.9,
+      the downstream floor), over all eligible companies. This is the number that
+      actually feeds the "Wikidata ID everywhere" consumers. It cannot reach 100%:
+      many small distributors / imprints have no Wikidata entity at all. Read it as
+      the effective linkage of the whole company base; the sparkline is the completion
+      % accumulated in the snapshot table.
+    warn_below: 20
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible} AND ID_WIKIDATA IS NOT NULL AND ID_WIKIDATA <> '' AND CONFIDENCE >= 0.9"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible}"
+
+  - key: company_wikidata_linked
+    table: T_WC_TMDB_COMPANY
+    description: "Companies linked (usable + quarantine)"
+    long_desc: >
+      Eligible companies carrying any Wikidata id, over all eligible companies —
+      including the quarantined 0.50-sentinel matches awaiting review. The gap between
+      this and company_wikidata_usable is the quarantine backlog. Same structural
+      ceiling as the usable metric (no upstream entity for many companies).
+    warn_below: 25
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible} AND ID_WIKIDATA IS NOT NULL AND ID_WIKIDATA <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible}"
+
+  - key: company_wikidata_match_rate
+    table: T_WC_TMDB_COMPANY
+    description: "Match rate among searched companies"
+    long_desc: >
+      Of the companies actually searched (TIM_WIKIPEDIA_SEARCH set), the share that
+      got a Wikidata id. This is the direct read on the RESOLUTION bottleneck: a low
+      value means the title-only matcher searched many companies but resolved few
+      (acronyms, variant/subsidiary names, special characters). Its complement is the
+      "attempted but unmatched" set. Denominator excludes not-yet-reached companies,
+      so this measures matcher quality, not coverage. Watch the trend as the acronym /
+      alias resolution work (TMDB-MOVIE-PREPROCESS-025 and follow-ups) lands.
+    warn_below: 40
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible} AND ID_WIKIDATA IS NOT NULL AND ID_WIKIDATA <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible} AND TIM_WIKIPEDIA_SEARCH IS NOT NULL"
+
+  - key: company_wikidata_clean_link_share
+    table: T_WC_TMDB_COMPANY
+    description: "Clean links (share not quarantined)"
+    long_desc: >
+      Of the linked companies, the share at usable confidence (CONFIDENCE >= 0.9)
+      rather than quarantined at the 0.50 sentinel. 100% means no link is waiting for
+      review; a dip means a wave of generic-only / brand-collision-risk matches was
+      quarantined and needs the precision guard (TMDB-MOVIE-PREPROCESS-025) or a manual
+      pass. This is the inverse of the quarantine backlog, framed so higher is better.
+    warn_below: 60
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible} AND ID_WIKIDATA IS NOT NULL AND ID_WIKIDATA <> '' AND CONFIDENCE >= 0.9"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_COMPANY WHERE {eligible} AND ID_WIKIDATA IS NOT NULL AND ID_WIKIDATA <> ''"
