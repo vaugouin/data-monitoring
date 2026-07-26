@@ -1,4 +1,4 @@
-# data-monitoring report manifest — TMDb similar / recommendations backfill.
+# data-monitoring report manifest - TMDb similar / recommendations backfill.
 #
 # WHY THIS REPORT EXISTS
 # ----------------------
@@ -52,7 +52,7 @@
 # All scans stay cheap.
 
 slug: tmdb-neighbours-backfill
-title: "TMDb — similar & recommendations backfill"
+title: "TMDb - similar & recommendations backfill"
 source_db: TMDB
 description: >
   Progress of the TMDb similar / recommendations backfill (TMDB-CRAWLER-022 for
@@ -76,7 +76,7 @@ metrics:
       Non-deleted movies whose TIM_UPDATED is at or after 2026-07-07 16:00, over all
       non-deleted movies. Because the neighbour fetch lives inside the full
       re-crawl (f_tmdbmovietosqleverything), this is the true completion signal for
-      the movie half of the backfill — it counts an entity even when TMDb returned
+      the movie half of the backfill - it counts an entity even when TMDb returned
       no neighbour for it. The sparkline is the per-day count of movies whose LAST
       crawl fell on that day; TIM_UPDATED is overwritten in place, so a movie
       re-crawled twice shows only on the later day and the curve reads slightly under

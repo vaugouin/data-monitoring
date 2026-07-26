@@ -1,4 +1,4 @@
-# data-monitoring report manifest — TMDb poster invariants (regression guard).
+# data-monitoring report manifest - TMDb poster invariants (regression guard).
 #
 # WHY THIS REPORT EXISTS
 # ----------------------
@@ -8,7 +8,7 @@
 # there and backfilled the existing rows, so both counts below are expected to be
 # **0 forever**. If either goes above 0 it means a regression re-introduced a writer
 # that pins an FR poster at 0 (check f_tmdbcontentimagesstosql, the 67-69 missing-image
-# backfill, and fix_main_image_display_order.py) — a tmdb-crawler bug, not a data gap.
+# backfill, and fix_main_image_display_order.py) - a tmdb-crawler bug, not a data gap.
 #
 # THIS IS AN INVARIANT, NOT A COVERAGE %
 # --------------------------------------
@@ -31,7 +31,7 @@
 # automated daily guard for the French-poster case specifically.
 
 slug: tmdb-poster-invariants
-title: "TMDb — poster invariants (FR posters must not be clamped at 0)"
+title: "TMDb - poster invariants (FR posters must not be clamped at 0)"
 source_db: TMDB
 description: >
   Regression guard: no localized French poster may sit at DISPLAY_ORDER 0 (reserved
@@ -46,7 +46,7 @@ metrics:
     description: "FR posters clamped at DISPLAY_ORDER 0 (movies)"
     long_desc: >
       Count of movie poster rows in French sitting at the reserved position 0. Must be
-      0. If > 0, a writer clamped a localized poster at 0 again — check
+      0. If > 0, a writer clamped a localized poster at 0 again - check
       f_tmdbcontentimagesstosql (full crawl), the 67-69 missing-image backfill in
       tmdb-crawler.py, and fix_main_image_display_order.py.
     done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_IMAGE WHERE TYPE_IMAGE = 'poster' AND DISPLAY_ORDER = 0 AND LANG = 'fr'"

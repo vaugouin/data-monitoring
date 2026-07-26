@@ -1,4 +1,4 @@
-# data-monitoring report manifest — Wikipedia refresh after the fine-section split.
+# data-monitoring report manifest - Wikipedia refresh after the fine-section split.
 #
 # WHY THIS REPORT EXISTS
 # ----------------------
@@ -15,7 +15,7 @@
 # THE UNIVERSE (denominator)
 # --------------------------
 # "All Wikidata IDs" here means every ID_WIKIDATA that already has a row in
-# T_WC_WIKIPEDIA_PAGE_LANG — i.e. every entity for which the crawler has ever
+# T_WC_WIKIPEDIA_PAGE_LANG - i.e. every entity for which the crawler has ever
 # resolved a Wikipedia page, all ITEM_TYPEs and both languages (en, fr) confounded.
 # That table is the crawler's own output ledger and is cheap to scan (~1.1M rows).
 #
@@ -29,7 +29,7 @@
 #
 # READING A ZERO
 # --------------
-# A 0 here never means "upstream has no value" — it means the crawler has not
+# A 0 here never means "upstream has no value" - it means the crawler has not
 # reached that slice yet. Percentages climb only as the crawler walks its process
 # list; they never regress (LAST_CRAWLED_AT only moves forward).
 #
@@ -37,7 +37,7 @@
 # `wikipedia-sections-refresh-by-type.yaml`.
 
 slug: wikipedia-sections-refresh
-title: "Wikipedia — refresh coverage since the fine-section split"
+title: "Wikipedia - refresh coverage since the fine-section split"
 source_db: WIKIPEDIA
 description: >
   Freshness of the stored Wikipedia content after the H2+H3 fine-section split went
@@ -75,7 +75,7 @@ metrics:
     long_desc: >
       Stricter variant of wikipedia_entity_refresh: an entity counts only when ALL
       of its language rows (en and fr when both exist) were crawled at or after the
-      switch — a NULL LAST_CRAWLED_AT counts as stale. The gap with the headline
+      switch - a NULL LAST_CRAWLED_AT counts as stale. The gap with the headline
       metric is the set of half-refreshed entities, typically an entity touched while
       the crawler was mid-chunk. Expect this one to trail by a few points.
     warn_below: 50
@@ -89,7 +89,7 @@ metrics:
     long_desc: >
       Row-level view of the same campaign: (ID_WIKIDATA, LANG) pairs with
       LAST_CRAWLED_AT at or after the switch, over all rows. This is the unit the
-      crawler actually processes — one fetch per entity per language — so its
+      crawler actually processes - one fetch per entity per language - so its
       sparkline is the honest throughput curve and the best basis for the ETA.
     warn_below: 50
     rate_label: "pages/day"
@@ -118,7 +118,7 @@ metrics:
     long_desc: >
       The one metric that measures CONTENT rather than crawl bookkeeping: distinct
       ID_WIKIDATA with at least one section row whose TIM_UPDATED is at or after the
-      switch — those rows, and only those, carry the H2+H3 fine split. Denominator is
+      switch - those rows, and only those, carry the H2+H3 fine split. Denominator is
       the entities with an existing Wikipedia page (PAGE_EXISTS = 1), since an entity
       whose page does not exist never gets section rows. It still cannot reach 100%:
       a page that parses to zero extractable sections has its rows deleted rather

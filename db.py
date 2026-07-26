@@ -2,7 +2,7 @@
 
 The DB user (`monitoring_ro`) is **read-only** on the whole monitored schema and
 may only INSERT/UPDATE the single history table `T_WC_DATA_MONITORING_SNAPSHOT`
-(idempotent daily upsert — see the UNIQUE key `UK_SNAPSHOT_DAY`). It holds no
+(idempotent daily upsert - see the UNIQUE key `UK_SNAPSHOT_DAY`). It holds no
 DELETE grant: the snapshot history is never pruned, it is the whole point.
 
 Connection parameters come from the environment (same pattern as the sibling

@@ -1,25 +1,25 @@
-# data-monitoring report manifest — TMDb TV season & episode coverage (V1).
+# data-monitoring report manifest - TMDb TV season & episode coverage (V1).
 #
 # A "report" is a named bundle of metrics. The filename slug (tmdb-tv-coverage)
 # becomes the HTML artifact name: tmdb-tv-coverage-YYYYMMDD.html.
 #
 # Each metric needs:
-#   key          stable identifier (snapshot METRIC_KEY) — also used for the rate label
+#   key          stable identifier (snapshot METRIC_KEY) - also used for the rate label
 #   table        the table being measured (snapshot TABLE_NAME)
 #   description  short human label (snapshot DESCRIPTION)
 #   long_desc    definition + how to read a NULL/zero (snapshot LONG_DESC)
 #   warn_below   coverage bar turns red below this %
-#   done_sql     single-value SELECT — the numerator
-#   expected_sql single-value SELECT — the denominator
-#   trend_sql    OPTIONAL two-column (day, count) SELECT — drives the rate sparkline
+#   done_sql     single-value SELECT - the numerator
+#   expected_sql single-value SELECT - the denominator
+#   trend_sql    OPTIONAL two-column (day, count) SELECT - drives the rate sparkline
 #                straight from the source table; omit for completion-flag metrics
 #                (their trend is the % history accumulated in the snapshot table).
 #
 # All SQL is read-only. To add a campaign (Wikidata, etc.) drop a new <slug>.yaml
-# here — no code change.
+# here - no code change.
 
 slug: tmdb-tv-coverage
-title: "TMDb — TV season & episode coverage"
+title: "TMDb - TV season & episode coverage"
 source_db: TMDB
 description: >
   Progress of the long-running TV season/episode backfill, gathered as a side
@@ -33,7 +33,7 @@ metrics:
     long_desc: >
       Series whose TIM_EPISODES_COMPLETED has been stamped by the crawler, over
       all non-deleted series. The crawler re-opens a series for refresh once its
-      TIM_UPDATED is older than 30 days, so this reads slightly low — it is the
+      TIM_UPDATED is older than 30 days, so this reads slightly low - it is the
       same completion mechanism f_tmdbserieselectiveseasonsepisodestosql uses.
     warn_below: 60
     done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE WHERE TIM_EPISODES_COMPLETED IS NOT NULL AND DELETED = 0"

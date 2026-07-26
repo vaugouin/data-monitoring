@@ -1,8 +1,8 @@
-# data-monitoring report manifest — Wikipedia refresh, per content family.
+# data-monitoring report manifest - Wikipedia refresh, per content family.
 #
 # Companion to `wikipedia-sections-refresh.yaml`: same campaign (the H2+H3
 # fine-section split live on 2026-07-20 23:00 Paris), same denominator logic, but
-# broken down by T_WC_WIKIPEDIA_PAGE_LANG.ITEM_TYPE — the crawler's content family.
+# broken down by T_WC_WIKIPEDIA_PAGE_LANG.ITEM_TYPE - the crawler's content family.
 #
 # WHY A SECOND MANIFEST
 # ---------------------
@@ -26,7 +26,7 @@
 # flip from 0% to ~100% in a single run.
 
 slug: wikipedia-sections-refresh-by-type
-title: "Wikipedia — refresh coverage by content family"
+title: "Wikipedia - refresh coverage by content family"
 source_db: WIKIPEDIA
 description: >
   Per-ITEM_TYPE breakdown of the Wikipedia re-crawl since the fine-section split

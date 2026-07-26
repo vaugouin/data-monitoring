@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""data-monitoring — nightly coverage/progress reports for long-running backfills.
+"""data-monitoring - nightly coverage/progress reports for long-running backfills.
 
 For each report manifest in reports/<slug>.yaml it:
   1. runs read-only SQL against the monitored database,
@@ -10,7 +10,7 @@ For each report manifest in reports/<slug>.yaml it:
   4. prunes HTML artifacts older than RETENTION_DAYS (history stays in the table;
      the NAS sync archives the files before they expire).
 
-Source-agnostic by design: a new campaign — TMDb, Wikidata, anything — is a new
+Source-agnostic by design: a new campaign - TMDb, Wikidata, anything - is a new
 manifest entry, not new code.
 
 Usage:
@@ -53,7 +53,7 @@ def load_manifest(path):
 def _sql(metric, key, params):
     """Metric SQL with the manifest-level `params:` substituted in.
 
-    A manifest that declares `params:` may write `{name}` placeholders in its SQL —
+    A manifest that declares `params:` may write `{name}` placeholders in its SQL -
     used to keep a value repeated across many metrics (a campaign cutoff date, say)
     in one place. Without `params:` the SQL is passed through untouched, so existing
     manifests keep working even if they contain braces.
@@ -196,7 +196,7 @@ def run_report(conn, manifest, run_dt):
             pct = _pct(done, expected)
 
             # Daily rate + trend. A metric with trend_sql (volume-fill) gets its real
-            # per-day curve straight from the source table's DAT_CREAT — instant
+            # per-day curve straight from the source table's DAT_CREAT - instant
             # history. Completion metrics have no per-day source, so the rate is the
             # delta vs the previous snapshot and the trend is the % history.
             if m.get("trend_sql"):
@@ -237,11 +237,37 @@ def run_report(conn, manifest, run_dt):
     return results
 
 
+def _day_nav(slug, run_dt, out_dir):
+    """Prev/next-day links for the same report, so you can walk it over time.
+
+    Filenames are `<slug>-YYYYMMDD.html`, so the neighbours are pure date
+    arithmetic. The PREVIOUS day's file either exists on disk (link it) or was
+    never generated / has been pruned (show it disabled). The NEXT day's file
+    cannot exist yet on the latest run, but tomorrow's run creates it and its own
+    page links back here — so the forward link is always rendered by date.
+    """
+    d = run_dt.date()
+    prev_d = d - datetime.timedelta(days=1)
+    next_d = d + datetime.timedelta(days=1)
+    prev_name = f"{slug}-{prev_d.strftime('%Y%m%d')}.html"
+    next_name = f"{slug}-{next_d.strftime('%Y%m%d')}.html"
+    return {
+        "prev_href": prev_name,
+        "prev_label": prev_d.isoformat(),
+        "prev_exists": os.path.exists(os.path.join(out_dir, prev_name)),
+        "today_label": d.isoformat(),
+        "next_href": next_name,
+        "next_label": next_d.isoformat(),
+        "index_href": "index-latest.html",
+    }
+
+
 def write_artifacts(report, results, run_dt, db_label):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     stamp = run_dt.strftime("%Y%m%d")
     generated_at = run_dt.strftime("%Y-%m-%d %H:%M %Z")
-    html_doc = render.render_report(report, results, generated_at, db_label)
+    nav = _day_nav(report["slug"], run_dt, OUTPUT_DIR)
+    html_doc = render.render_report(report, results, generated_at, db_label, nav=nav)
     fname = f"{report['slug']}-{stamp}.html"
     path = os.path.join(OUTPUT_DIR, fname)
     with open(path, "w", encoding="utf-8") as fh:
@@ -259,7 +285,7 @@ def write_index(report_files, run_dt):
     doc = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>data-monitoring — {generated_at}</title>
+<title>data-monitoring - {generated_at}</title>
 <style>body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:28px;color:#263238}}
 h1{{font-size:18px}} li{{margin:4px 0}} .meta{{color:#90a4ae;font-size:12px}}</style>
 </head><body>
@@ -295,7 +321,22 @@ def prune(run_dt):
 def _write_sample(slug, report, results, generated_at, filename):
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples")
     os.makedirs(out_dir, exist_ok=True)
-    doc = render.render_report(report, results, generated_at, "sample / no DB")
+    # Illustrative day-nav (prev shown active, next by date) so the sample shows the
+    # over-time navigation bar; the real hrefs are computed per run in write_artifacts.
+    day = filename.rsplit("-", 1)[-1].replace(".html", "")
+    try:
+        d = datetime.datetime.strptime(day, "%Y%m%d").date()
+        nav = {
+            "prev_href": f"{slug}-{(d - datetime.timedelta(days=1)).strftime('%Y%m%d')}.html",
+            "prev_label": (d - datetime.timedelta(days=1)).isoformat(), "prev_exists": True,
+            "today_label": d.isoformat(),
+            "next_href": f"{slug}-{(d + datetime.timedelta(days=1)).strftime('%Y%m%d')}.html",
+            "next_label": (d + datetime.timedelta(days=1)).isoformat(),
+            "index_href": "index-latest.html",
+        }
+    except ValueError:
+        nav = None
+    doc = render.render_report(report, results, generated_at, "sample / no DB", nav=nav)
     path = os.path.join(out_dir, filename)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(doc)
@@ -310,9 +351,9 @@ def _sample_wikipedia_refresh():
     """
     report = {
         "slug": "wikipedia-sections-refresh",
-        "title": "Wikipedia — refresh coverage since the fine-section split",
+        "title": "Wikipedia - refresh coverage since the fine-section split",
         "description": ("Freshness of the stored Wikipedia content after the H2+H3 fine-section "
-                        "split went live on 2026-07-20 23:00 (Paris). SAMPLE DATA — numbers are "
+                        "split went live on 2026-07-20 23:00 (Paris). SAMPLE DATA - numbers are "
                         "illustrative."),
     }
     base = datetime.date(2026, 7, 21)
@@ -346,7 +387,7 @@ def _sample_wikipedia_refresh():
          "daily_rate": 11500, "trend": pct_hist, "trend_kind": "pct"},
         {"key": "wikipedia_section_entity_refresh", "description": "Wikidata IDs whose stored sections were rewritten",
          "long_desc": "The content metric: entities with at least one section row rewritten since the "
-                      "switch — those rows carry the H2+H3 fine split.",
+                      "switch - those rows carry the H2+H3 fine split.",
          "warn_below": 50, "rate_label": "Wikidata IDs/day",
          "done": 34200, "expected": 548900, "pct": 6.23,
          "daily_rate": 10900, "trend": pct_hist, "trend_kind": "pct"},
@@ -370,9 +411,9 @@ def _sample_tmdb_neighbours():
     """
     report = {
         "slug": "tmdb-neighbours-backfill",
-        "title": "TMDb — similar & recommendations backfill",
+        "title": "TMDb - similar & recommendations backfill",
         "description": ("Progress of the TMDb similar / recommendations backfill (TMDB-CRAWLER-022/023), "
-                        "live since 2026-07-07 ~16:00 (Paris). SAMPLE DATA — numbers are illustrative."),
+                        "live since 2026-07-07 ~16:00 (Paris). SAMPLE DATA - numbers are illustrative."),
     }
     base = datetime.date(2026, 7, 7)
     ndays = 17
@@ -428,9 +469,9 @@ def _sample_tmdb_company_wikidata():
     """
     report = {
         "slug": "tmdb-company-wikidata",
-        "title": "TMDb — company Wikidata linking (Process 63)",
+        "title": "TMDb - company Wikidata linking (Process 63)",
         "description": ("Progress and quality of the TMDb company -> Wikidata backfill (Process 63, "
-                        "TMDB-MOVIE-PREPROCESS-015). SAMPLE DATA — numbers are illustrative."),
+                        "TMDB-MOVIE-PREPROCESS-015). SAMPLE DATA - numbers are illustrative."),
     }
     base = datetime.date(2026, 6, 25)
     ndays = 30
@@ -479,9 +520,9 @@ def _sample_tmdb_poster_invariants():
     """
     report = {
         "slug": "tmdb-poster-invariants",
-        "title": "TMDb — poster invariants (FR posters must not be clamped at 0)",
+        "title": "TMDb - poster invariants (FR posters must not be clamped at 0)",
         "description": ("Regression guard: no French poster may sit at DISPLAY_ORDER 0. Both counts must "
-                        "always be 0. SAMPLE DATA — the movie breach below is illustrative."),
+                        "always be 0. SAMPLE DATA - the movie breach below is illustrative."),
     }
     base = datetime.date(2026, 7, 19)
     flat_zero = [(str(base + datetime.timedelta(days=i)), 0) for i in range(7)]
@@ -504,13 +545,13 @@ def _sample_tmdb_poster_invariants():
 def _sample_wikidata_pipeline():
     """Seeded preview of the wikidata-etl-pipeline report.
 
-    A mid-run snapshot: download + pass1 done, pass2 running, the rest pending — so
+    A mid-run snapshot: download + pass1 done, pass2 running, the rest pending - so
     the timeline shows all four step states at once. Overall RUNNING.
     """
     report = {
         "slug": "wikidata-etl-pipeline",
-        "title": "Wikidata — dump ETL pipeline (14 steps)",
-        "description": ("Step-by-step progress of the multi-day Wikidata dump ingestion. SAMPLE DATA — "
+        "title": "Wikidata - dump ETL pipeline (14 steps)",
+        "description": ("Step-by-step progress of the multi-day Wikidata dump ingestion. SAMPLE DATA - "
                         "a mid-run snapshot (pass 2 in progress)."),
     }
     labels = [
@@ -564,10 +605,10 @@ def _sample_tmdb_tv():
     run_dt = datetime.datetime(2026, 6, 23, 6, 30)
     report = {
         "slug": "tmdb-tv-coverage",
-        "title": "TMDb — TV season & episode coverage",
+        "title": "TMDb - TV season & episode coverage",
         "description": ("Progress of the long-running TV season/episode backfill driven by the "
                         "tmdb-crawler series-refresh processes (4 / 28 / 33 + tv/changes). "
-                        "SAMPLE DATA — numbers are illustrative."),
+                        "SAMPLE DATA - numbers are illustrative."),
     }
     # a ~7-week daily episode-gather curve (deterministic, illustrative)
     base = datetime.date(2026, 5, 5)
@@ -616,7 +657,7 @@ def _find_manifests(report=None):
 def _print_sql(report=None):
     """Dry run: parse the manifests and print every metric's resolved SQL.
 
-    No DB needed — this is how a new manifest (placeholders substituted, YAML well
+    No DB needed - this is how a new manifest (placeholders substituted, YAML well
     formed, metric keys unique) is checked before it reaches the VPS.
     """
     seen = {}
@@ -627,17 +668,17 @@ def _print_sql(report=None):
               f"source_db={manifest.get('source_db', SOURCE_DEFAULT)}) ===")
         for m in manifest["metrics"]:
             # METRIC_KEY is part of the snapshot unique key together with
-            # (DAT_CREAT, SOURCE_DB, TABLE_NAME) — a duplicate would silently
+            # (DAT_CREAT, SOURCE_DB, TABLE_NAME) - a duplicate would silently
             # overwrite another metric's row.
             dupkey = (manifest.get("source_db", SOURCE_DEFAULT), m["table"], m["key"])
             if dupkey in seen:
                 print(f"  !! DUPLICATE metric key {m['key']} on {m['table']} "
-                      f"(also in {seen[dupkey]}) — snapshot rows would collide")
+                      f"(also in {seen[dupkey]}) - snapshot rows would collide")
             seen[dupkey] = manifest["slug"]
             print(f"\n  [{m['key']}] {m['description']}")
             if m.get("kind") == "pipeline":
                 print(f"    pipeline: reads T_WC_SERVER_VARIABLE LIKE "
-                      f"'{m['var_prefix']}%' — {len(m.get('steps') or [])} steps")
+                      f"'{m['var_prefix']}%' - {len(m.get('steps') or [])} steps")
                 continue
             if m.get("kind") == "alert_zero":
                 print("    kind: alert_zero (count must stay 0)")
@@ -666,12 +707,12 @@ def main():
     run_dt = _now()
     manifests = _find_manifests(args.report)
 
-    # Fail loudly rather than emit an empty index — a missing reports/ dir in the
+    # Fail loudly rather than emit an empty index - a missing reports/ dir in the
     # container is a deploy error, not a no-op.
-    print(f"reports dir: {REPORTS_DIR} — {len(manifests)} manifest(s) found")
+    print(f"reports dir: {REPORTS_DIR} - {len(manifests)} manifest(s) found")
     if not manifests:
         sys.exit(f"ERROR: no report manifests in {REPORTS_DIR} "
-                 "— was the reports/ directory deployed into the image?")
+                 "- was the reports/ directory deployed into the image?")
 
     db_label = f"{os.environ.get('DB_NAME', '?')}@{os.environ.get('DB_HOST', '?')}"
     conn = db.get_connection()

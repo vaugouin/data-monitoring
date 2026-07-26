@@ -1,12 +1,12 @@
 # data-monitoring
 
 Nightly **coverage / progress reports** for long-running backfill campaigns in the
-Agent BBB ecosystem — e.g. the multi-month TMDb TV season/episode gather. It reads
+Agent BBB ecosystem - e.g. the multi-month TMDb TV season/episode gather. It reads
 the finished `T_WC_*` tables (read-only), records a daily snapshot, and renders a
 self-contained HTML artifact. It does **not** gather or transform data.
 
 This answers *"how far along is the campaign, how fast is it going, when will it
-finish"* — distinct from `tmdb-front`'s `srvvar.php`, which tracks realtime process
+finish"* - distinct from `tmdb-front`'s `srvvar.php`, which tracks realtime process
 liveness.
 
 ## How it works
@@ -16,7 +16,7 @@ liveness.
   `trend_sql` (per-day counts → a rate sparkline), `rate_label` (the unit printed next
   to the daily rate) and a manifest-level `params:` map whose keys can be written as
   `{name}` placeholders inside the SQL (one place to change a campaign cutoff date).
-  Adding a campaign — TMDb, Wikidata, anything — is a **new manifest file, not new
+  Adding a campaign - TMDb, Wikidata, anything - is a **new manifest file, not new
   code**.
 - A metric may set `kind: alert_zero` instead of the default coverage shape: its
   `done_sql` returns a count that must always be 0 (a regression-guard invariant), no
@@ -30,7 +30,7 @@ liveness.
   `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders `<slug>-YYYYMMDD.html`
   (+ `index-YYYYMMDD.html` and `index-latest.html`) into `OUTPUT_DIR`, and prunes
   HTML older than `RETENTION_DAYS`.
-- `render.py` produces HTML with inline CSS + inline SVG only — no CDN/JS, opens
+- `render.py` produces HTML with inline CSS + inline SVG only - no CDN/JS, opens
   offline, archives cleanly.
 
 ## Setup
@@ -55,10 +55,33 @@ python data-monitoring.py --print-sql          # resolved SQL of every metric, n
 prints each query, and flags two metrics that would collide on the snapshot unique
 key `(DAT_CREAT, SOURCE_DB, TABLE_NAME, METRIC_KEY)`.
 
+### Day navigation, and retrofitting old pages
+
+Every generated report page carries a nav bar (prev day / today / next day, plus a
+link to `index-latest.html`), so you can walk the same report over time to see the
+progression. Filenames are `<slug>-YYYYMMDD.html`, so the neighbours are pure date
+arithmetic; the previous-day link is disabled when that file is missing (never
+generated or pruned), and the next-day link is created by the following run.
+
+Pages generated **before** this feature don't have the bar, and a past page cannot
+be faithfully regenerated (a pipeline card's step state comes from server variables
+overwritten in place, and a sparkline "as of that day" is not reconstructible). Add
+the bar to old pages with a surgical, idempotent in-place edit instead:
+
+```sh
+python backfill_day_nav.py /path/to/reports --dry-run   # preview
+python backfill_day_nav.py /path/to/reports             # inject after </header>
+```
+
+It inserts a self-styled `<nav>` (inline styles, no dependency on the page's CSS)
+and reads prev/next existence from the files actually present in the directory, so an
+archive links only to days that exist. Safe to run repeatedly and on both the live
+`OUTPUT_DIR` and the NAS archive.
+
 ## Database user (least privilege)
 
 `monitoring_ro` is read-only on the whole schema and may only write the one history
-table (INSERT + UPDATE for the idempotent daily upsert — **no DELETE**, history is
+table (INSERT + UPDATE for the idempotent daily upsert - **no DELETE**, history is
 never pruned):
 
 ```sql
@@ -70,7 +93,7 @@ FLUSH PRIVILEGES;
 
 ## Deployment (VPS, Docker, cron)
 
-One-shot container (builds, runs, exits — not a daemon), launched by `data-monitoring.sh`
+One-shot container (builds, runs, exits - not a daemon), launched by `data-monitoring.sh`
 from the host crontab at ~06:30 Paris, output redirected to a log so cron does not
 email each run:
 
@@ -103,19 +126,19 @@ the switch, and how fast*.
   entity never crawled at all is in neither numerator nor denominator; the manifest
   ships a commented-out `wikipedia_universe_reached` metric that UNIONs the crawler's
   ~20 source tables if that blind spot ever matters (time it first).
-- **Global report** — six metrics: entities re-crawled, entities re-crawled in *every*
+- **Global report** - six metrics: entities re-crawled, entities re-crawled in *every*
   language, page rows re-crawled, entities whose crawl actually *succeeded*
   (`LAST_SUCCESS_AT`, the early warning for a running-but-failing re-crawl), entities
   whose section rows were actually *rewritten* (the content metric,
   `T_WC_WIKIPEDIA_PAGE_LANG_SECTION.TIM_UPDATED`), and the share of freshly written
-  sections carrying an H3 composite title — the signature proving the deployed image
+  sections carrying an H3 composite title - the signature proving the deployed image
   really is the post-016 build.
-- **By-type report** — the same coverage per `ITEM_TYPE`, ordered like the crawler's
+- **By-type report** - the same coverage per `ITEM_TYPE`, ordered like the crawler's
   own priority list (`arrquickprocessids`, stalest family first). The crawler walks one
   family at a time, so a family sits near 0% until its process runs and then jumps to
   ~100%; the global percentage alone hides that.
 
-A zero in these reports never means "upstream has no value" — it means the crawler has
+A zero in these reports never means "upstream has no value" - it means the crawler has
 not reached that slice yet.
 
 ### `tmdb-neighbours-backfill`
@@ -130,14 +153,14 @@ loop since the feature shipped.
 
 Two angles, in order:
 
-- **Re-crawl progress** (`movie_recrawl_progress`, `serie_recrawl_progress`) — the
+- **Re-crawl progress** (`movie_recrawl_progress`, `serie_recrawl_progress`) - the
   completion + ETA story. Non-deleted entities with `TIM_UPDATED` at or after the
   cutoff, over all non-deleted entities. `f_sqlupdatearray` always rewrites
   `TIM_UPDATED` on a full crawl, so this counts an entity as done even when TMDb
   returned no neighbour for it. **This is the metric to read for completion.**
-- **Table fill** (`*_similar_fill`, `*_recommendation_fill`) — the direct view of the
+- **Table fill** (`*_similar_fill`, `*_recommendation_fill`) - the direct view of the
   four tables: distinct source entities that now carry at least one stored neighbour.
-  It **cannot reach 100%** — TMDb has no neighbour set for many obscure or very recent
+  It **cannot reach 100%** - TMDb has no neighbour set for many obscure or very recent
   titles, which are re-crawled but write no row. A fill metric plateauing below the
   re-crawl metric means "these titles have no neighbours upstream", not a crawler miss.
 
@@ -149,7 +172,7 @@ backfill; the fill counts need no cutoff filter.
 Progress and quality of the TMDb **company → Wikidata** backfill (`tmdb-movie-preprocess`
 Process 63, TMDB-MOVIE-PREPROCESS-015). A long **rolling** campaign: each run searches
 at most 3000 companies (`ORDER BY TIM_WIKIPEDIA_SEARCH ASC`, never-searched first), and
-the real bottleneck is resolution, not throughput — so it runs for a long time and never
+the real bottleneck is resolution, not throughput - so it runs for a long time and never
 trivially reaches 100%.
 
 State per eligible company (non-empty `NAME`, not deleted) in `T_WC_TMDB_COMPANY`: a
@@ -158,14 +181,14 @@ match writes `ID_WIKIDATA` + `CONFIDENCE` + `TIM_WIKIPEDIA_SEARCH`; a miss write
 `CONFIDENCE` sentinel (usable floor is 0.9). Five metrics, all framed so **higher is
 better** (the bar-colour code reds out *below* a threshold):
 
-- `company_wikidata_attempted` — frontier coverage (searched / eligible), the ETA metric.
-- `company_wikidata_usable` — usable links (`CONFIDENCE >= 0.9`) / eligible.
-- `company_wikidata_linked` — any link / eligible; the gap with *usable* is the quarantine backlog.
-- `company_wikidata_match_rate` — links / searched: the direct read on the resolution bottleneck.
-- `company_wikidata_clean_link_share` — usable / linked: the inverse of the quarantine backlog.
+- `company_wikidata_attempted` - frontier coverage (searched / eligible), the ETA metric.
+- `company_wikidata_usable` - usable links (`CONFIDENCE >= 0.9`) / eligible.
+- `company_wikidata_linked` - any link / eligible; the gap with *usable* is the quarantine backlog.
+- `company_wikidata_match_rate` - links / searched: the direct read on the resolution bottleneck.
+- `company_wikidata_clean_link_share` - usable / linked: the inverse of the quarantine backlog.
 
 No cutoff (it is a current-state coverage snapshot). Low outcome values are not a crawler
-miss — most small companies simply have no Wikidata entity. When the "Wikidata ID
+miss - most small companies simply have no Wikidata entity. When the "Wikidata ID
 everywhere" epic wires network / genre / character, clone this manifest per entity.
 
 ### `tmdb-poster-invariants`
@@ -179,22 +202,22 @@ value is a tmdb-crawler regression, not a data gap.
 
 These use the `kind: alert_zero` metric type: the value is healthy at 0 and raises a
 page-top **ALERT banner** (plus a red card) the instant it exceeds 0. No denominator, no
-percentage — the sparkline is the raw count history and should be a flat line on zero.
+percentage - the sparkline is the raw count history and should be a flat line on zero.
 
 ### `wikidata-etl-pipeline`
 
 Step-by-step progress of the **multi-day** Wikidata dump ingestion (`wikidata-crawler`,
-steps 101-114: download the ~90 GB `.bz2`, three streaming passes — pass1 / pass2 /
-item_cache — then staging load, target bulk-load, media resolution, cleanup). The early
+steps 101-114: download the ~90 GB `.bz2`, three streaming passes - pass1 / pass2 /
+item_cache - then staging load, target bulk-load, media resolution, cleanup). The early
 passes write **files** on `/shared`, invisible to a MariaDB query, but the orchestrator
 also writes one `T_WC_SERVER_VARIABLE` row per step
 (`strwikidatacrawlerstep<code>{status,startedat,finishedat}`). This report uses the
-`kind: pipeline` metric type to read those and render a **step timeline** — each step as
+`kind: pipeline` metric type to read those and render a **step timeline** - each step as
 done / running / pending / failed with its start→finish and duration, an overall
 status/current-step header, a steps-completed bar, and a daily completion trend. A failed
 run raises the page-top alert banner with the last error.
 
 Cadence note: data-monitoring runs once a day (~06:30), so this is a daily **checkpoint**
-of a days-long job, not a live console — for real-time step status use tmdb-front's
+of a days-long job, not a live console - for real-time step status use tmdb-front's
 `srvvar.php`, which reads the same server variables live. Cost is one indexed
 `LIKE 'strwikidatacrawler%'` scan of the small `T_WC_SERVER_VARIABLE` table.

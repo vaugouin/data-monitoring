@@ -1,11 +1,11 @@
-# data-monitoring report manifest — TMDb company -> Wikidata linking (Process 63).
+# data-monitoring report manifest - TMDb company -> Wikidata linking (Process 63).
 #
 # WHY THIS REPORT EXISTS
 # ----------------------
 # tmdb-movie-preprocess TMDB-MOVIE-PREPROCESS-015 (Process 63,
 # TMDB_PREPROCESS_SCOPE=wikidata-companies) links every TMDb company to its Wikidata
 # entity. It is a LONG, ROLLING backfill: each run processes at most 3000 companies
-# (SELECT ... ORDER BY TIM_WIKIPEDIA_SEARCH ASC LIMIT 3000 — never-searched rows
+# (SELECT ... ORDER BY TIM_WIKIPEDIA_SEARCH ASC LIMIT 3000 - never-searched rows
 # first, then the oldest re-searched), and the real bottleneck is resolution, not
 # throughput (acronyms, subsidiary/variant names, special characters like "Canal+"
 # never reach the right entity with the title-only matcher). So it will run for a
@@ -43,7 +43,7 @@
 # those companies yet. For the outcome metrics (usable, match_rate, clean_link_share)
 # a low value is not a crawler miss: most TMDb companies are small distributors or
 # imprints with NO Wikidata entity at all, so full linkage is structurally impossible
-# — read the trend and the match rate among SEARCHED companies, not an absolute 100%.
+# - read the trend and the match rate among SEARCHED companies, not an absolute 100%.
 #
 # NO CUTOFF: unlike the wikipedia / neighbours reports this is a coverage snapshot of
 # the current state, not a "since a switch" freshness one. Because the backfill is
@@ -58,7 +58,7 @@
 # that ships, clone this manifest per entity (same shape, different table/columns).
 
 slug: tmdb-company-wikidata
-title: "TMDb — company Wikidata linking (Process 63)"
+title: "TMDb - company Wikidata linking (Process 63)"
 source_db: TMDB
 description: >
   Progress and quality of the TMDb company -> Wikidata backfill (Process 63,
@@ -107,7 +107,7 @@ metrics:
     table: T_WC_TMDB_COMPANY
     description: "Companies linked (usable + quarantine)"
     long_desc: >
-      Eligible companies carrying any Wikidata id, over all eligible companies —
+      Eligible companies carrying any Wikidata id, over all eligible companies -
       including the quarantined 0.50-sentinel matches awaiting review. The gap between
       this and company_wikidata_usable is the quarantine backlog. Same structural
       ceiling as the usable metric (no upstream entity for many companies).

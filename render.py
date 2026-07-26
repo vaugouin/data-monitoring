@@ -12,20 +12,20 @@ def _bar_color(pct, warn_below):
     if pct is None:
         return "#9e9e9e"
     if pct < warn_below:
-        return "#d9534f"      # red — under the warning floor
+        return "#d9534f"      # red - under the warning floor
     if pct < 90:
-        return "#f0ad4e"      # amber — getting there
-    return "#5cb85c"          # green — effectively complete
+        return "#f0ad4e"      # amber - getting there
+    return "#5cb85c"          # green - effectively complete
 
 
 def _fmt_int(n):
     if n is None:
-        return "—"
+        return "-"
     return f"{int(n):,}".replace(",", " ")   # thin space grouping
 
 
 def _fmt_pct(p):
-    return "—" if p is None else f"{p:.1f}%"
+    return "-" if p is None else f"{p:.1f}%"
 
 
 # ---- inline SVG ------------------------------------------------------------
@@ -224,7 +224,7 @@ def _alert_banner(metrics):
             f"<li><strong>{_fmt_int(m.get('done'))}</strong> · "
             f"{html.escape(m['description'])} <code>({html.escape(m['key'])})</code></li>")
     for m in fails:
-        err = f" — {html.escape(str(m['last_error']))}" if m.get("last_error") else ""
+        err = f" - {html.escape(str(m['last_error']))}" if m.get("last_error") else ""
         items.append(
             f"<li><strong>FAILURE</strong> · {html.escape(m['description'])} "
             f"<code>({html.escape(m['key'])})</code>{err}</li>")
@@ -233,22 +233,44 @@ def _alert_banner(metrics):
             "upstream job (tmdb-crawler / wikidata-crawler) before it spreads.")
     return (
         '<div class="alert-banner" role="alert">'
-        f'<div class="alert-title">⚠ ALERT — {n} issue{"s" if n > 1 else ""}</div>'
+        f'<div class="alert-title">⚠ ALERT - {n} issue{"s" if n > 1 else ""}</div>'
         f'<ul>{"".join(items)}</ul>'
         f'<div class="alert-note">{note}</div>'
         '</div>'
     )
 
 
-def render_report(report, metrics, generated_at, db_label):
+def _day_nav_bar(nav):
+    """Prev / today / next-day links for the same report over time.
+
+    The previous day links only when its file is present (else it is shown
+    disabled); today is inert; next is always a link (tomorrow's run creates it).
+    """
+    if not nav:
+        return ""
+    if nav.get("prev_exists"):
+        prev = f'<a class="nav-link" href="{html.escape(nav["prev_href"])}">◀ {html.escape(nav["prev_label"])}</a>'
+    else:
+        prev = f'<span class="nav-link nav-disabled" title="not generated yet or pruned">◀ {html.escape(nav["prev_label"])}</span>'
+    today = f'<span class="nav-today">{html.escape(nav.get("today_label", ""))}</span>'
+    nxt = f'<a class="nav-link" href="{html.escape(nav["next_href"])}">{html.escape(nav["next_label"])} ▶</a>'
+    index = (f'<a class="nav-index" href="{html.escape(nav["index_href"])}">all reports</a>'
+             if nav.get("index_href") else "")
+    return (f'<nav class="day-nav">'
+            f'<div class="day-nav-days">{prev}{today}{nxt}</div>{index}'
+            f'</nav>')
+
+
+def render_report(report, metrics, generated_at, db_label, nav=None):
     cards = "\n".join(_metric_card(m) for m in metrics)
     banner = _alert_banner(metrics)
+    daynav = _day_nav_bar(nav)
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(report['title'])} — {html.escape(generated_at)}</title>
+<title>{html.escape(report['title'])} - {html.escape(generated_at)}</title>
 <style>
   :root {{ font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }}
   body {{ margin: 0; background: #f5f7f9; color: #263238; }}
@@ -292,6 +314,17 @@ def render_report(report, metrics, generated_at, db_label):
   .step-pending {{ opacity: .55; }}
   .step-failed .step-label {{ font-weight: 600; color: #d9534f; }}
   .step-err {{ font-size: 12px; color: #7f231f; margin: 6px 0; }}
+  .day-nav {{ display: flex; align-items: center; justify-content: space-between;
+              gap: 12px; padding: 10px 28px; background: #eceff1;
+              border-bottom: 1px solid #cfd8dc; flex-wrap: wrap; }}
+  .day-nav-days {{ display: flex; align-items: center; gap: 14px; font-size: 13px; }}
+  .nav-link {{ color: #1976d2; text-decoration: none; font-weight: 600;
+               font-variant-numeric: tabular-nums; }}
+  .nav-link:hover {{ text-decoration: underline; }}
+  .nav-disabled {{ color: #b0bec5; font-weight: 400; cursor: not-allowed; }}
+  .nav-today {{ color: #263238; font-weight: 700; font-variant-numeric: tabular-nums; }}
+  .nav-index {{ font-size: 12px; color: #607d8b; text-decoration: none; }}
+  .nav-index:hover {{ text-decoration: underline; }}
   footer {{ padding: 16px 28px; font-size: 11px; color: #90a4ae; }}
 </style>
 </head>
@@ -300,6 +333,7 @@ def render_report(report, metrics, generated_at, db_label):
   <h1>{html.escape(report['title'])}</h1>
   <div class="meta">Generated {html.escape(generated_at)} · {html.escape(db_label)} · report slug <code>{html.escape(report['slug'])}</code></div>
 </header>
+{daynav}
 <div class="intro">{html.escape(report.get('description', ''))}</div>
 {banner}
 <div class="grid">
