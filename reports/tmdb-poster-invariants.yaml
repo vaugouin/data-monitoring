@@ -1,0 +1,61 @@
+# data-monitoring report manifest — TMDb poster invariants (regression guard).
+#
+# WHY THIS REPORT EXISTS
+# ----------------------
+# DISPLAY_ORDER 0 is reserved for the canonical en/'' poster of an entity. A
+# LOCALIZED (non-en) poster must NEVER sit at position 0. tmdb-crawler
+# TMDB-CRAWLER-024/025/026 closed every code path that could clamp a French poster
+# there and backfilled the existing rows, so both counts below are expected to be
+# **0 forever**. If either goes above 0 it means a regression re-introduced a writer
+# that pins an FR poster at 0 (check f_tmdbcontentimagesstosql, the 67-69 missing-image
+# backfill, and fix_main_image_display_order.py) — a tmdb-crawler bug, not a data gap.
+#
+# THIS IS AN INVARIANT, NOT A COVERAGE %
+# --------------------------------------
+# Each metric uses `kind: alert_zero`: done_sql returns the count of offending rows;
+# the report is healthy at 0 and raises a page-top ALERT banner (plus a red card) the
+# moment any count is > 0. There is no denominator and no percentage. The sparkline is
+# the raw count history and should be a flat line on zero.
+#
+# These are the queries Philippe wants run every day (they must always return 0):
+#   SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_IMAGE
+#   WHERE TYPE_IMAGE = 'poster' AND DISPLAY_ORDER = 0 AND LANG = 'fr';
+#   SELECT COUNT(*) FROM T_WC_TMDB_SERIE_IMAGE
+#   WHERE TYPE_IMAGE = 'poster' AND DISPLAY_ORDER = 0 AND LANG = 'fr';
+#
+# COST: TYPE_IMAGE / DISPLAY_ORDER / LANG are each indexed; DISPLAY_ORDER = 0 is a thin
+# slice of the image tables, so both counts are cheap.
+#
+# Related: tmdb-crawler doc/queries/monitoring.sql tracks the broader
+# LOCALIZED_POSTERS_AT_0 (any non-en/'' language) invariant by hand; this report is the
+# automated daily guard for the French-poster case specifically.
+
+slug: tmdb-poster-invariants
+title: "TMDb — poster invariants (FR posters must not be clamped at 0)"
+source_db: TMDB
+description: >
+  Regression guard: no localized French poster may sit at DISPLAY_ORDER 0 (reserved
+  for the canonical en/'' poster). Both counts must always be 0 after
+  TMDB-CRAWLER-024/025/026. A non-zero value raises an alert and means a tmdb-crawler
+  regression re-clamped an FR poster at position 0.
+
+metrics:
+  - key: fr_poster_at_zero_movie
+    table: T_WC_TMDB_MOVIE_IMAGE
+    kind: alert_zero
+    description: "FR posters clamped at DISPLAY_ORDER 0 (movies)"
+    long_desc: >
+      Count of movie poster rows in French sitting at the reserved position 0. Must be
+      0. If > 0, a writer clamped a localized poster at 0 again — check
+      f_tmdbcontentimagesstosql (full crawl), the 67-69 missing-image backfill in
+      tmdb-crawler.py, and fix_main_image_display_order.py.
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_IMAGE WHERE TYPE_IMAGE = 'poster' AND DISPLAY_ORDER = 0 AND LANG = 'fr'"
+
+  - key: fr_poster_at_zero_serie
+    table: T_WC_TMDB_SERIE_IMAGE
+    kind: alert_zero
+    description: "FR posters clamped at DISPLAY_ORDER 0 (series)"
+    long_desc: >
+      Series equivalent of fr_poster_at_zero_movie: French poster rows at the reserved
+      position 0. Must be 0. Same writers to check on a breach.
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE_IMAGE WHERE TYPE_IMAGE = 'poster' AND DISPLAY_ORDER = 0 AND LANG = 'fr'"

@@ -74,24 +74,39 @@ def run_report(conn, manifest, run_dt):
     tim = run_dt.strftime("%Y-%m-%d %H:%M:%S")
     results = []
     for order, m in enumerate(manifest["metrics"], start=1):
-        done = db.scalar(conn, _sql(m, "done_sql", params))
-        expected = db.scalar(conn, _sql(m, "expected_sql", params))
-        pct = _pct(done, expected)
+        kind = m.get("kind", "coverage")
 
-        # Daily rate + trend. A metric with trend_sql (volume-fill) gets its real
-        # per-day curve straight from the source table's DAT_CREAT — instant
-        # history. Completion metrics have no per-day source, so the rate is the
-        # delta vs the previous snapshot and the trend is the % history.
-        if m.get("trend_sql"):
-            pairs = db.fetch_pairs(conn, _sql(m, "trend_sql", params))
-            trend = [(str(a), b) for (a, b) in pairs]
-            trend_kind = "rate"
-            daily_rate = pairs[-1][1] if pairs else None
+        # An `alert_zero` metric is an INVARIANT, not a coverage %: its done_sql
+        # counts rows that must never exist (a regression guard). done == 0 is
+        # healthy; done > 0 raises a page-level alert. It has no denominator and no
+        # percentage; its trend is the raw count over the snapshot history, which
+        # should stay flat on zero.
+        if kind == "alert_zero":
+            done = db.scalar(conn, _sql(m, "done_sql", params)) or 0
+            expected = 0                     # the target: zero offending rows
+            pct = None
+            daily_rate = None
+            trend = [(str(a), b) for (a, b) in db.done_history(conn, slug, m["key"])]
+            trend_kind = "count"
         else:
-            prev = db.previous_done(conn, slug, source_db, m["table"], m["key"], dat)
-            daily_rate = (done - prev) if (done is not None and prev is not None) else None
-            trend = [(str(a), b) for (a, b) in db.pct_history(conn, slug, m["key"])]
-            trend_kind = "pct"
+            done = db.scalar(conn, _sql(m, "done_sql", params))
+            expected = db.scalar(conn, _sql(m, "expected_sql", params))
+            pct = _pct(done, expected)
+
+            # Daily rate + trend. A metric with trend_sql (volume-fill) gets its real
+            # per-day curve straight from the source table's DAT_CREAT — instant
+            # history. Completion metrics have no per-day source, so the rate is the
+            # delta vs the previous snapshot and the trend is the % history.
+            if m.get("trend_sql"):
+                pairs = db.fetch_pairs(conn, _sql(m, "trend_sql", params))
+                trend = [(str(a), b) for (a, b) in pairs]
+                trend_kind = "rate"
+                daily_rate = pairs[-1][1] if pairs else None
+            else:
+                prev = db.previous_done(conn, slug, source_db, m["table"], m["key"], dat)
+                daily_rate = (done - prev) if (done is not None and prev is not None) else None
+                trend = [(str(a), b) for (a, b) in db.pct_history(conn, slug, m["key"])]
+                trend_kind = "pct"
 
         row = {
             "REPORT_SLUG": slug, "SOURCE_DB": source_db, "TABLE_NAME": m["table"],
@@ -103,16 +118,19 @@ def run_report(conn, manifest, run_dt):
             "TIM_UPDATED": tim, "ID_USER_UPDATED": 0,
         }
         db.upsert_snapshot(conn, row)
-        # snapshot just written → reflect it in the % history trend
+        # snapshot just written → reflect today's point in the accumulated trend
         if trend_kind == "pct" and (not trend or trend[-1][0] != str(dat)):
             trend.append((str(dat), pct))
+        elif trend_kind == "count" and (not trend or trend[-1][0] != str(dat)):
+            trend.append((str(dat), done))
 
         results.append({
             "key": m["key"], "description": m["description"],
             "long_desc": m.get("long_desc"), "warn_below": m.get("warn_below", 50),
             "done": done, "expected": expected, "pct": pct, "daily_rate": daily_rate,
             "trend": trend, "trend_kind": trend_kind,
-            "rate_label": m.get("rate_label"),
+            "rate_label": m.get("rate_label"), "kind": kind,
+            "alert": (kind == "alert_zero" and (done or 0) > 0),
         })
     return results
 
@@ -351,11 +369,42 @@ def _sample_tmdb_company_wikidata():
                   "2026-07-25 06:30 (SAMPLE)", "tmdb-company-wikidata-20260725.html")
 
 
+def _sample_tmdb_poster_invariants():
+    """Seeded preview of the tmdb-poster-invariants report.
+
+    Deliberately shows ONE breached invariant (movies) so the alert banner + red
+    card render alongside the healthy (0) card. Real runs are expected all-zero.
+    """
+    report = {
+        "slug": "tmdb-poster-invariants",
+        "title": "TMDb — poster invariants (FR posters must not be clamped at 0)",
+        "description": ("Regression guard: no French poster may sit at DISPLAY_ORDER 0. Both counts must "
+                        "always be 0. SAMPLE DATA — the movie breach below is illustrative."),
+    }
+    base = datetime.date(2026, 7, 19)
+    flat_zero = [(str(base + datetime.timedelta(days=i)), 0) for i in range(7)]
+    movie_spike = [(str(base + datetime.timedelta(days=i)), 0 if i < 6 else 3) for i in range(7)]
+    results = [
+        {"key": "fr_poster_at_zero_movie", "description": "FR posters clamped at DISPLAY_ORDER 0 (movies)",
+         "long_desc": "Count of French movie poster rows at the reserved position 0. Must be 0; a breach "
+                      "means a writer re-clamped a localized poster at 0.",
+         "kind": "alert_zero", "done": 3, "expected": 0, "pct": None, "daily_rate": None,
+         "alert": True, "trend": movie_spike, "trend_kind": "count"},
+        {"key": "fr_poster_at_zero_serie", "description": "FR posters clamped at DISPLAY_ORDER 0 (series)",
+         "long_desc": "Series equivalent: French poster rows at position 0. Must be 0.",
+         "kind": "alert_zero", "done": 0, "expected": 0, "pct": None, "daily_rate": None,
+         "alert": False, "trend": flat_zero, "trend_kind": "count"},
+    ]
+    _write_sample("tmdb-poster-invariants", report, results,
+                  "2026-07-25 06:30 (SAMPLE)", "tmdb-poster-invariants-20260725.html")
+
+
 def _sample():
     _sample_tmdb_tv()
     _sample_wikipedia_refresh()
     _sample_tmdb_neighbours()
     _sample_tmdb_company_wikidata()
+    _sample_tmdb_poster_invariants()
 
 
 def _sample_tmdb_tv():

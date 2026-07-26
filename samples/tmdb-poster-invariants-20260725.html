@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TMDb — poster invariants (FR posters must not be clamped at 0) — 2026-07-25 06:30 (SAMPLE)</title>
+<style>
+  :root { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  body { margin: 0; background: #f5f7f9; color: #263238; }
+  header { background: #263238; color: #fff; padding: 20px 28px; }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header .meta { font-size: 12px; color: #b0bec5; }
+  .intro { padding: 16px 28px; font-size: 14px; color: #455a64; max-width: 70ch; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+           gap: 16px; padding: 0 28px 28px; }
+  .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .card-head h3 { margin: 0; font-size: 15px; }
+  .metric-key { font-size: 11px; color: #90a4ae; font-family: ui-monospace, monospace; }
+  .pct { font-size: 30px; font-weight: 700; margin: 8px 0 4px; }
+  .bar { display: block; }
+  .counts { font-size: 13px; color: #455a64; margin: 8px 0; }
+  .trend { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .trend-label { font-size: 11px; color: #90a4ae; }
+  .long-desc { font-size: 12px; color: #607d8b; margin: 8px 0 0; line-height: 1.4; }
+  .muted { color: #90a4ae; font-size: 11px; }
+  .status { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+  .card-alert { border: 2px solid #d9534f; box-shadow: 0 0 0 3px rgba(217,83,79,.12); }
+  .alert-banner { margin: 16px 28px; padding: 14px 18px; background: #fdecea;
+                   border: 1px solid #d9534f; border-left: 6px solid #d9534f; border-radius: 6px;
+                   color: #7f231f; }
+  .alert-banner .alert-title { font-size: 15px; font-weight: 700; }
+  .alert-banner ul { margin: 8px 0; padding-left: 20px; font-size: 13px; }
+  .alert-banner .alert-note { font-size: 12px; color: #a4433f; }
+  footer { padding: 16px 28px; font-size: 11px; color: #90a4ae; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TMDb — poster invariants (FR posters must not be clamped at 0)</h1>
+  <div class="meta">Generated 2026-07-25 06:30 (SAMPLE) · sample / no DB · report slug <code>tmdb-poster-invariants</code></div>
+</header>
+<div class="intro">Regression guard: no French poster may sit at DISPLAY_ORDER 0. Both counts must always be 0. SAMPLE DATA — the movie breach below is illustrative.</div>
+<div class="alert-banner" role="alert"><div class="alert-title">⚠ ALERT — 1 invariant breached</div><ul><li><strong>3</strong> · FR posters clamped at DISPLAY_ORDER 0 (movies) <code>(fr_poster_at_zero_movie)</code></li></ul><div class="alert-note">These counts must always be 0. A non-zero value points to an upstream regression (tmdb-crawler) — investigate before it spreads.</div></div>
+<div class="grid">
+
+    <section class="card card-alert">
+      <div class="card-head">
+        <h3>FR posters clamped at DISPLAY_ORDER 0 (movies)</h3>
+        <span class="metric-key">fr_poster_at_zero_movie</span>
+      </div>
+      <div class="pct" style="color:#d9534f">3</div>
+      <div class="status" style="color:#d9534f">ALERT
+        <span class="muted">· target 0</span></div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#5cb85c" stroke-width="1.5" points="0.0,40.0 36.7,40.0 73.3,40.0 110.0,40.0 146.7,40.0 183.3,40.0 220.0,0.0"/></svg>
+        <span class="trend-label">count history (should stay 0)</span>
+      </div>
+      <p class="long-desc">Count of French movie poster rows at the reserved position 0. Must be 0; a breach means a writer re-clamped a localized poster at 0.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>FR posters clamped at DISPLAY_ORDER 0 (series)</h3>
+        <span class="metric-key">fr_poster_at_zero_serie</span>
+      </div>
+      <div class="pct" style="color:#5cb85c">0</div>
+      <div class="status" style="color:#5cb85c">OK
+        <span class="muted">· target 0</span></div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#5cb85c" stroke-width="1.5" points="0.0,40.0 36.7,40.0 73.3,40.0 110.0,40.0 146.7,40.0 183.3,40.0 220.0,40.0"/></svg>
+        <span class="trend-label">count history (should stay 0)</span>
+      </div>
+      <p class="long-desc">Series equivalent: French poster rows at position 0. Must be 0.</p>
+    </section>
+</div>
+<footer>
+  data-monitoring · read-only snapshot · history in <code>T_WC_DATA_MONITORING_SNAPSHOT</code>.
+  Percentages are an upper bound on what upstream exposes; a NULL/zero usually means the
+  source has no value, not a crawler miss. ETA is an interpretation, not a commitment.
+</footer>
+</body>
+</html>

@@ -81,9 +81,41 @@ def _eta(done, expected, daily_rate):
     return f"~{days:,.0f} days at the current rate".replace(",", " ")
 
 
+# ---- an alert-zero card (invariant guard: the count must stay 0) ------------
+
+def _alert_card(m):
+    """Card for a `kind: alert_zero` metric: a count that must always be 0.
+
+    0 → OK (green); > 0 → ALERT (red). No percentage, no coverage bar; the
+    sparkline shows the raw count history (should be a flat line on zero).
+    """
+    count = m.get("done") or 0
+    alert = count > 0
+    status_txt = "ALERT" if alert else "OK"
+    color = "#d9534f" if alert else "#5cb85c"
+    trend = m.get("trend") or []
+    return f"""
+    <section class="card{' card-alert' if alert else ''}">
+      <div class="card-head">
+        <h3>{html.escape(m['description'])}</h3>
+        <span class="metric-key">{html.escape(m['key'])}</span>
+      </div>
+      <div class="pct" style="color:{color}">{_fmt_int(count)}</div>
+      <div class="status" style="color:{color}">{status_txt}
+        <span class="muted">· target 0</span></div>
+      <div class="trend">
+        {_sparkline(trend, 'count')}
+        <span class="trend-label">count history (should stay 0)</span>
+      </div>
+      <p class="long-desc">{html.escape(m.get('long_desc') or '')}</p>
+    </section>"""
+
+
 # ---- a metric card ---------------------------------------------------------
 
 def _metric_card(m):
+    if m.get("kind") == "alert_zero":
+        return _alert_card(m)
     pct = m.get("pct")
     warn = m.get("warn_below", 50)
     eta = _eta(m.get("done"), m.get("expected"), m.get("daily_rate"))
@@ -118,8 +150,30 @@ def _metric_card(m):
 
 # ---- full document ---------------------------------------------------------
 
+def _alert_banner(metrics):
+    """A prominent page-top banner when any alert_zero invariant is breached."""
+    breached = [m for m in metrics if m.get("kind") == "alert_zero" and (m.get("done") or 0) > 0]
+    if not breached:
+        return ""
+    items = "".join(
+        f"<li><strong>{_fmt_int(m.get('done'))}</strong> · "
+        f"{html.escape(m['description'])} <code>({html.escape(m['key'])})</code></li>"
+        for m in breached
+    )
+    return (
+        '<div class="alert-banner" role="alert">'
+        f'<div class="alert-title">⚠ ALERT — {len(breached)} invariant'
+        f'{"s" if len(breached) > 1 else ""} breached</div>'
+        f'<ul>{items}</ul>'
+        '<div class="alert-note">These counts must always be 0. A non-zero value points to an '
+        'upstream regression (tmdb-crawler) — investigate before it spreads.</div>'
+        '</div>'
+    )
+
+
 def render_report(report, metrics, generated_at, db_label):
     cards = "\n".join(_metric_card(m) for m in metrics)
+    banner = _alert_banner(metrics)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -146,6 +200,14 @@ def render_report(report, metrics, generated_at, db_label):
   .trend-label {{ font-size: 11px; color: #90a4ae; }}
   .long-desc {{ font-size: 12px; color: #607d8b; margin: 8px 0 0; line-height: 1.4; }}
   .muted {{ color: #90a4ae; font-size: 11px; }}
+  .status {{ font-size: 15px; font-weight: 700; margin: 0 0 8px; }}
+  .card-alert {{ border: 2px solid #d9534f; box-shadow: 0 0 0 3px rgba(217,83,79,.12); }}
+  .alert-banner {{ margin: 16px 28px; padding: 14px 18px; background: #fdecea;
+                   border: 1px solid #d9534f; border-left: 6px solid #d9534f; border-radius: 6px;
+                   color: #7f231f; }}
+  .alert-banner .alert-title {{ font-size: 15px; font-weight: 700; }}
+  .alert-banner ul {{ margin: 8px 0; padding-left: 20px; font-size: 13px; }}
+  .alert-banner .alert-note {{ font-size: 12px; color: #a4433f; }}
   footer {{ padding: 16px 28px; font-size: 11px; color: #90a4ae; }}
 </style>
 </head>
@@ -155,6 +217,7 @@ def render_report(report, metrics, generated_at, db_label):
   <div class="meta">Generated {html.escape(generated_at)} · {html.escape(db_label)} · report slug <code>{html.escape(report['slug'])}</code></div>
 </header>
 <div class="intro">{html.escape(report.get('description', ''))}</div>
+{banner}
 <div class="grid">
 {cards}
 </div>

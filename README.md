@@ -18,6 +18,10 @@ liveness.
   `{name}` placeholders inside the SQL (one place to change a campaign cutoff date).
   Adding a campaign — TMDb, Wikidata, anything — is a **new manifest file, not new
   code**.
+- A metric may set `kind: alert_zero` instead of the default coverage shape: its
+  `done_sql` returns a count that must always be 0 (a regression-guard invariant), no
+  `expected_sql` needed. The report is healthy at 0 and raises a page-top alert banner
+  the moment any such count exceeds 0.
 - `data-monitoring.py` runs the SQL, upserts one row per metric per day into
   `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders `<slug>-YYYYMMDD.html`
   (+ `index-YYYYMMDD.html` and `index-latest.html`) into `OUTPUT_DIR`, and prunes
@@ -159,3 +163,16 @@ better** (the bar-colour code reds out *below* a threshold):
 No cutoff (it is a current-state coverage snapshot). Low outcome values are not a crawler
 miss — most small companies simply have no Wikidata entity. When the "Wikidata ID
 everywhere" epic wires network / genre / character, clone this manifest per entity.
+
+### `tmdb-poster-invariants`
+
+A **regression guard**, not a coverage report. `DISPLAY_ORDER 0` is reserved for the
+canonical en/'' poster, so no localized French poster may sit there;
+tmdb-crawler TMDB-CRAWLER-024/025/026 closed every writer that could clamp one and
+backfilled the old rows. The two metrics count French posters still at position 0 in
+`T_WC_TMDB_MOVIE_IMAGE` / `T_WC_TMDB_SERIE_IMAGE`; both must be **0 forever**. A non-zero
+value is a tmdb-crawler regression, not a data gap.
+
+These use the `kind: alert_zero` metric type: the value is healthy at 0 and raises a
+page-top **ALERT banner** (plus a red card) the instant it exceeds 0. No denominator, no
+percentage — the sparkline is the raw count history and should be a flat line on zero.

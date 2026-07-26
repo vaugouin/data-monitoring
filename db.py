@@ -77,6 +77,19 @@ def pct_history(conn, slug, metric_key):
     return [(r["DAT_CREAT"], r["PCT"]) for r in rows]
 
 
+def done_history(conn, slug, metric_key):
+    """(DAT_CREAT, DONE_COUNT) history of a metric, for the alert_zero count trend."""
+    sql = (
+        f"SELECT DAT_CREAT, DONE_COUNT FROM {SNAPSHOT_TABLE} "
+        "WHERE REPORT_SLUG=%s AND METRIC_KEY=%s AND DELETED=0 "
+        "ORDER BY DAT_CREAT ASC"
+    )
+    with conn.cursor() as cur:
+        cur.execute(sql, (slug, metric_key))
+        rows = cur.fetchall()
+    return [(r["DAT_CREAT"], r["DONE_COUNT"]) for r in rows]
+
+
 def upsert_snapshot(conn, row):
     """Idempotent one-row-per-(day, source, table, metric) write.
 

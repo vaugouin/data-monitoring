@@ -24,8 +24,11 @@ process liveness**. This repo tracks **campaign trend + completion + ETA** inste
    read-only `done_sql` / `expected_sql` (and an optional `trend_sql` for a per-day
    rate sparkline, `rate_label` for the printed unit). A manifest-level `params:` map
    is substituted into the SQL via `str.format()`, so a value repeated across metrics
-   (a campaign cutoff date) lives in one place. A new campaign (TMDb, Wikidata,
-   anything) is a **new manifest file, not new code** — the design is source-agnostic.
+   (a campaign cutoff date) lives in one place. A metric may also set `kind: alert_zero`
+   (default is `coverage`): its `done_sql` returns a count that must always be 0 (an
+   invariant / regression guard, no `expected_sql`); `render._alert_card` shows an OK/ALERT
+   card and `render._alert_banner` raises a page-top banner when the count is > 0. A new
+   campaign or guard is a **new manifest file, not new code** — the design is source-agnostic.
 2. `data-monitoring.py` runs the SQL, upserts one row per metric per day into
    `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders a self-contained HTML
    artifact `<slug>-YYYYMMDD.html` (+ daily `index` and `index-latest.html`) into
@@ -60,6 +63,11 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
   crawled before that cutoff still holds coarse H2-only sections, so these two are pure
   **freshness** reports, not gathering-completeness ones. Details and caveats live in
   the manifest headers; a summary is in @README.md.
+- `tmdb-poster-invariants` — regression guard (NOT a backfill): French posters must never
+  sit at `DISPLAY_ORDER 0` (reserved for the en/'' canonical) after TMDB-CRAWLER-024/025/026.
+  Two `kind: alert_zero` metrics count FR posters at 0 in `T_WC_TMDB_{MOVIE,SERIE}_IMAGE`;
+  both must stay 0, and any breach raises a page-top ALERT banner + red card. This is the
+  first use of the `alert_zero` metric kind (see below).
 - `tmdb-company-wikidata` — progress + quality of the TMDb company→Wikidata backfill
   (`tmdb-movie-preprocess` Process 63, TMDB-MOVIE-PREPROCESS-015). A long **rolling**
   campaign (≤3000 companies/run, `TIM_WIKIPEDIA_SEARCH ASC`). Modelling: eligible universe
