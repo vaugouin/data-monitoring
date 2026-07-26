@@ -77,6 +77,23 @@ def pct_history(conn, slug, metric_key):
     return [(r["DAT_CREAT"], r["PCT"]) for r in rows]
 
 
+def server_variables(conn, prefix):
+    """All T_WC_SERVER_VARIABLE rows whose VAR_NAME starts with `prefix`.
+
+    Returns {VAR_NAME: (VAR_VALUE, TIM_UPDATED)}. Used by the `pipeline` metric
+    kind to read a batch job's per-step status/timestamps (the crawlers write one
+    row per step: <prefix>step<code>status / startedat / finishedat).
+    """
+    sql = (
+        "SELECT VAR_NAME, VAR_VALUE, TIM_UPDATED FROM T_WC_SERVER_VARIABLE "
+        "WHERE VAR_NAME LIKE %s AND (DELETED = 0 OR DELETED IS NULL)"
+    )
+    with conn.cursor() as cur:
+        cur.execute(sql, (prefix + "%",))
+        rows = cur.fetchall()
+    return {r["VAR_NAME"]: (r["VAR_VALUE"], r["TIM_UPDATED"]) for r in rows}
+
+
 def done_history(conn, slug, metric_key):
     """(DAT_CREAT, DONE_COUNT) history of a metric, for the alert_zero count trend."""
     sql = (

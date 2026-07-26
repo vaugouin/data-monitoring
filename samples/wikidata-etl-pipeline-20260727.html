@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wikidata — dump ETL pipeline (14 steps) — 2026-07-27 06:30 (SAMPLE)</title>
+<style>
+  :root { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  body { margin: 0; background: #f5f7f9; color: #263238; }
+  header { background: #263238; color: #fff; padding: 20px 28px; }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header .meta { font-size: 12px; color: #b0bec5; }
+  .intro { padding: 16px 28px; font-size: 14px; color: #455a64; max-width: 70ch; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+           gap: 16px; padding: 0 28px 28px; }
+  .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .card-head h3 { margin: 0; font-size: 15px; }
+  .metric-key { font-size: 11px; color: #90a4ae; font-family: ui-monospace, monospace; }
+  .pct { font-size: 30px; font-weight: 700; margin: 8px 0 4px; }
+  .bar { display: block; }
+  .counts { font-size: 13px; color: #455a64; margin: 8px 0; }
+  .trend { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .trend-label { font-size: 11px; color: #90a4ae; }
+  .long-desc { font-size: 12px; color: #607d8b; margin: 8px 0 0; line-height: 1.4; }
+  .muted { color: #90a4ae; font-size: 11px; }
+  .status { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+  .card-alert { border: 2px solid #d9534f; box-shadow: 0 0 0 3px rgba(217,83,79,.12); }
+  .alert-banner { margin: 16px 28px; padding: 14px 18px; background: #fdecea;
+                   border: 1px solid #d9534f; border-left: 6px solid #d9534f; border-radius: 6px;
+                   color: #7f231f; }
+  .alert-banner .alert-title { font-size: 15px; font-weight: 700; }
+  .alert-banner ul { margin: 8px 0; padding-left: 20px; font-size: 13px; }
+  .alert-banner .alert-note { font-size: 12px; color: #a4433f; }
+  .card-pipeline { grid-column: 1 / -1; }
+  .pipeline-meta { font-size: 13px; color: #455a64; margin: 4px 0 10px; }
+  .steps { list-style: none; margin: 10px 0 0; padding: 0; }
+  .step { display: flex; align-items: baseline; gap: 10px; padding: 5px 6px;
+           border-bottom: 1px solid #eceff1; font-size: 13px; }
+  .step-icon { font-weight: 700; width: 14px; text-align: center; flex: none; }
+  .step-code { color: #90a4ae; font-family: ui-monospace, monospace; font-size: 11px;
+                width: 26px; flex: none; }
+  .step-label { flex: 1 1 auto; }
+  .step-timing { color: #607d8b; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .step-dur { color: #90a4ae; font-size: 11px; min-width: 52px; text-align: right; }
+  .step-running .step-label { font-weight: 600; color: #1976d2; }
+  .step-pending { opacity: .55; }
+  .step-failed .step-label { font-weight: 600; color: #d9534f; }
+  .step-err { font-size: 12px; color: #7f231f; margin: 6px 0; }
+  footer { padding: 16px 28px; font-size: 11px; color: #90a4ae; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Wikidata — dump ETL pipeline (14 steps)</h1>
+  <div class="meta">Generated 2026-07-27 06:30 (SAMPLE) · sample / no DB · report slug <code>wikidata-etl-pipeline</code></div>
+</header>
+<div class="intro">Step-by-step progress of the multi-day Wikidata dump ingestion. SAMPLE DATA — a mid-run snapshot (pass 2 in progress).</div>
+
+<div class="grid">
+
+    <section class="card card-pipeline">
+      <div class="card-head">
+        <h3>Wikidata dump ETL - 14-step pipeline</h3>
+        <span class="metric-key">wikidata_etl_pipeline</span>
+      </div>
+      <div class="pipeline-meta"><strong style="color:#1976d2">RUNNING</strong> &nbsp;·&nbsp; 3/14 steps done &nbsp;·&nbsp; current: 104: run ETL pass2 &nbsp;·&nbsp; runtime: RUNNING &nbsp;·&nbsp; started 2026-07-26 13:02:11</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="21.43" height="22" rx="3" fill="#f0ad4e"/><line x1="0" y1="0" x2="0" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      
+      <ol class="steps"><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">101</span><span class="step-label">Resolve / download the .bz2 dump</span><span class="step-timing">13:02 → 18:41</span><span class="step-dur">5h39m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">102</span><span class="step-label">Pass 1 - classification graph + core entity IDs</span><span class="step-timing">18:41 → 23:07</span><span class="step-dur">4h26m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">103</span><span class="step-label">Validate pass 1 output</span><span class="step-timing">23:07 → 23:09</span><span class="step-dur">2m</span></li><li class="step step-running"><span class="step-icon" style="color:#1976d2">▶</span><span class="step-code">104</span><span class="step-label">Pass 2 - entity rows + statements</span><span class="step-timing">23:09 → …</span><span class="step-dur">7h30m</span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">105</span><span class="step-label">Validate pass 2 output</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">106</span><span class="step-label">Item-cache pass - referenced items</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">107</span><span class="step-label">Validate item-cache output</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">108</span><span class="step-label">Load NDJSON into staging tables</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">109</span><span class="step-label">Validate staging data</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">110</span><span class="step-label">Bulk-load target T_WC_WIKIDATA_* tables</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">111</span><span class="step-label">Validate target tables</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">112</span><span class="step-label">Resolve media resources</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">113</span><span class="step-label">Validate media resources</span><span class="step-timing"></span></li><li class="step step-pending"><span class="step-icon" style="color:#b0bec5">•</span><span class="step-code">114</span><span class="step-label">Cleanup old import batches</span><span class="step-timing"></span></li></ol>
+      <p class="long-desc">Live step timeline read from the crawler&#x27;s server variables; the bar and daily trend are steps-completed / 14.</p>
+    </section>
+</div>
+<footer>
+  data-monitoring · read-only snapshot · history in <code>T_WC_DATA_MONITORING_SNAPSHOT</code>.
+  Percentages are an upper bound on what upstream exposes; a NULL/zero usually means the
+  source has no value, not a crawler miss. ETA is an interpretation, not a commitment.
+</footer>
+</body>
+</html>

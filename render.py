@@ -111,9 +111,71 @@ def _alert_card(m):
     </section>"""
 
 
+# ---- a pipeline timeline card (a multi-step batch job) ---------------------
+
+_STEP_STYLE = {
+    "done":    ("✓", "#5cb85c"),
+    "running": ("▶", "#1976d2"),
+    "failed":  ("✗", "#d9534f"),
+    "pending": ("•", "#b0bec5"),
+}
+
+
+def _pipeline_card(m):
+    """Full-width card: an ordered step timeline for a multi-step batch job."""
+    overall = m.get("overall_status", "UNKNOWN")
+    ostyle = {"SUCCESS": "#5cb85c", "RUNNING": "#1976d2",
+              "FAILURE": "#d9534f"}.get(overall, "#90a4ae")
+    done = m.get("done") or 0
+    total = m.get("expected") or len(m.get("steps") or [])
+    rows = []
+    for st in m.get("steps") or []:
+        icon, color = _STEP_STYLE.get(st["state"], _STEP_STYLE["pending"])
+        timing = ""
+        if st.get("started"):
+            timing = html.escape(st["started"][11:16])  # HH:MM
+            if st.get("finished"):
+                timing += " → " + html.escape(st["finished"][11:16])
+            elif st["state"] == "running":
+                timing += " → …"
+        dur = f'<span class="step-dur">{html.escape(st["duration"])}</span>' if st.get("duration") else ""
+        rows.append(
+            f'<li class="step step-{st["state"]}">'
+            f'<span class="step-icon" style="color:{color}">{icon}</span>'
+            f'<span class="step-code">{st["code"]}</span>'
+            f'<span class="step-label">{html.escape(st["label"])}</span>'
+            f'<span class="step-timing">{timing}</span>{dur}'
+            f'</li>'
+        )
+    meta_bits = [f'<strong style="color:{ostyle}">{html.escape(overall)}</strong>',
+                 f'{done}/{total} steps done']
+    if m.get("current_process"):
+        meta_bits.append("current: " + html.escape(m["current_process"]))
+    if m.get("runtime"):
+        meta_bits.append("runtime: " + html.escape(str(m["runtime"])))
+    if m.get("started_at"):
+        meta_bits.append("started " + html.escape(str(m["started_at"])))
+    err = (f'<div class="step-err">last error: {html.escape(str(m["last_error"]))}</div>'
+           if m.get("last_error") else "")
+    return f"""
+    <section class="card card-pipeline{' card-alert' if m.get('alert') else ''}">
+      <div class="card-head">
+        <h3>{html.escape(m['description'])}</h3>
+        <span class="metric-key">{html.escape(m['key'])}</span>
+      </div>
+      <div class="pipeline-meta">{' &nbsp;·&nbsp; '.join(meta_bits)}</div>
+      {_coverage_bar(m.get('pct'), 0)}
+      {err}
+      <ol class="steps">{''.join(rows)}</ol>
+      <p class="long-desc">{html.escape(m.get('long_desc') or '')}</p>
+    </section>"""
+
+
 # ---- a metric card ---------------------------------------------------------
 
 def _metric_card(m):
+    if m.get("kind") == "pipeline":
+        return _pipeline_card(m)
     if m.get("kind") == "alert_zero":
         return _alert_card(m)
     pct = m.get("pct")
@@ -151,22 +213,29 @@ def _metric_card(m):
 # ---- full document ---------------------------------------------------------
 
 def _alert_banner(metrics):
-    """A prominent page-top banner when any alert_zero invariant is breached."""
-    breached = [m for m in metrics if m.get("kind") == "alert_zero" and (m.get("done") or 0) > 0]
-    if not breached:
+    """A prominent page-top banner for breached invariants or a failed pipeline."""
+    zeros = [m for m in metrics if m.get("kind") == "alert_zero" and (m.get("done") or 0) > 0]
+    fails = [m for m in metrics if m.get("kind") == "pipeline" and m.get("alert")]
+    if not zeros and not fails:
         return ""
-    items = "".join(
-        f"<li><strong>{_fmt_int(m.get('done'))}</strong> · "
-        f"{html.escape(m['description'])} <code>({html.escape(m['key'])})</code></li>"
-        for m in breached
-    )
+    items = []
+    for m in zeros:
+        items.append(
+            f"<li><strong>{_fmt_int(m.get('done'))}</strong> · "
+            f"{html.escape(m['description'])} <code>({html.escape(m['key'])})</code></li>")
+    for m in fails:
+        err = f" — {html.escape(str(m['last_error']))}" if m.get("last_error") else ""
+        items.append(
+            f"<li><strong>FAILURE</strong> · {html.escape(m['description'])} "
+            f"<code>({html.escape(m['key'])})</code>{err}</li>")
+    n = len(zeros) + len(fails)
+    note = ("Invariant counts must stay 0 and pipelines must not fail. Investigate the "
+            "upstream job (tmdb-crawler / wikidata-crawler) before it spreads.")
     return (
         '<div class="alert-banner" role="alert">'
-        f'<div class="alert-title">⚠ ALERT — {len(breached)} invariant'
-        f'{"s" if len(breached) > 1 else ""} breached</div>'
-        f'<ul>{items}</ul>'
-        '<div class="alert-note">These counts must always be 0. A non-zero value points to an '
-        'upstream regression (tmdb-crawler) — investigate before it spreads.</div>'
+        f'<div class="alert-title">⚠ ALERT — {n} issue{"s" if n > 1 else ""}</div>'
+        f'<ul>{"".join(items)}</ul>'
+        f'<div class="alert-note">{note}</div>'
         '</div>'
     )
 
@@ -208,6 +277,21 @@ def render_report(report, metrics, generated_at, db_label):
   .alert-banner .alert-title {{ font-size: 15px; font-weight: 700; }}
   .alert-banner ul {{ margin: 8px 0; padding-left: 20px; font-size: 13px; }}
   .alert-banner .alert-note {{ font-size: 12px; color: #a4433f; }}
+  .card-pipeline {{ grid-column: 1 / -1; }}
+  .pipeline-meta {{ font-size: 13px; color: #455a64; margin: 4px 0 10px; }}
+  .steps {{ list-style: none; margin: 10px 0 0; padding: 0; }}
+  .step {{ display: flex; align-items: baseline; gap: 10px; padding: 5px 6px;
+           border-bottom: 1px solid #eceff1; font-size: 13px; }}
+  .step-icon {{ font-weight: 700; width: 14px; text-align: center; flex: none; }}
+  .step-code {{ color: #90a4ae; font-family: ui-monospace, monospace; font-size: 11px;
+                width: 26px; flex: none; }}
+  .step-label {{ flex: 1 1 auto; }}
+  .step-timing {{ color: #607d8b; font-size: 12px; font-variant-numeric: tabular-nums; }}
+  .step-dur {{ color: #90a4ae; font-size: 11px; min-width: 52px; text-align: right; }}
+  .step-running .step-label {{ font-weight: 600; color: #1976d2; }}
+  .step-pending {{ opacity: .55; }}
+  .step-failed .step-label {{ font-weight: 600; color: #d9534f; }}
+  .step-err {{ font-size: 12px; color: #7f231f; margin: 6px 0; }}
   footer {{ padding: 16px 28px; font-size: 11px; color: #90a4ae; }}
 </style>
 </head>

@@ -22,6 +22,10 @@ liveness.
   `done_sql` returns a count that must always be 0 (a regression-guard invariant), no
   `expected_sql` needed. The report is healthy at 0 and raises a page-top alert banner
   the moment any such count exceeds 0.
+- A metric may set `kind: pipeline` to track a multi-step batch job: it reads one
+  `T_WC_SERVER_VARIABLE` row per step (written by the job's orchestrator) and renders a
+  step timeline (done / running / pending / failed, with per-step durations). No SQL;
+  configure `var_prefix` and a `steps:` list of `{code, label}`.
 - `data-monitoring.py` runs the SQL, upserts one row per metric per day into
   `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders `<slug>-YYYYMMDD.html`
   (+ `index-YYYYMMDD.html` and `index-latest.html`) into `OUTPUT_DIR`, and prunes
@@ -176,3 +180,21 @@ value is a tmdb-crawler regression, not a data gap.
 These use the `kind: alert_zero` metric type: the value is healthy at 0 and raises a
 page-top **ALERT banner** (plus a red card) the instant it exceeds 0. No denominator, no
 percentage — the sparkline is the raw count history and should be a flat line on zero.
+
+### `wikidata-etl-pipeline`
+
+Step-by-step progress of the **multi-day** Wikidata dump ingestion (`wikidata-crawler`,
+steps 101-114: download the ~90 GB `.bz2`, three streaming passes — pass1 / pass2 /
+item_cache — then staging load, target bulk-load, media resolution, cleanup). The early
+passes write **files** on `/shared`, invisible to a MariaDB query, but the orchestrator
+also writes one `T_WC_SERVER_VARIABLE` row per step
+(`strwikidatacrawlerstep<code>{status,startedat,finishedat}`). This report uses the
+`kind: pipeline` metric type to read those and render a **step timeline** — each step as
+done / running / pending / failed with its start→finish and duration, an overall
+status/current-step header, a steps-completed bar, and a daily completion trend. A failed
+run raises the page-top alert banner with the last error.
+
+Cadence note: data-monitoring runs once a day (~06:30), so this is a daily **checkpoint**
+of a days-long job, not a live console — for real-time step status use tmdb-front's
+`srvvar.php`, which reads the same server variables live. Cost is one indexed
+`LIKE 'strwikidatacrawler%'` scan of the small `T_WC_SERVER_VARIABLE` table.

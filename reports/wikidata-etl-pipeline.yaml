@@ -1,0 +1,104 @@
+# data-monitoring report manifest - Wikidata dump ETL pipeline (multi-day job).
+#
+# WHY THIS REPORT EXISTS
+# ----------------------
+# wikidata-crawler ingests the full Wikidata JSON dump through a 14-step pipeline
+# (wikidata_crawler.py orchestrator, steps 101-114): download the ~90 GB .bz2 dump,
+# three streaming passes over it (pass1 classification graph, pass2 entity rows +
+# statements, item_cache referenced items), then load the NDJSON staging into
+# MariaDB, bulk-load the target T_WC_WIKIDATA_* tables, resolve media, and clean up
+# old batches. The whole run takes SEVERAL DAYS. Philippe launched the current run
+# on 2026-07-26 ~13:00 (Paris).
+#
+# HOW PROGRESS IS READ (this is the unusual part)
+# -----------------------------------------------
+# The first passes produce FILES on /shared, not database rows, so a MariaDB query
+# cannot see them directly. But the orchestrator writes one T_WC_SERVER_VARIABLE row
+# per step as it goes:
+#   strwikidatacrawlerstep<code>status      = RUNNING then SUCCESS
+#   strwikidatacrawlerstep<code>startedat   = 'YYYY-MM-DD HH:MM:SS'
+#   strwikidatacrawlerstep<code>finishedat  = 'YYYY-MM-DD HH:MM:SS'
+# plus overall strwikidatacrawlerstatus (RUNNING/SUCCESS/FAILURE), currentprocess,
+# startdatetime, enddatetime, totalruntime, lasterror. This report reads those with
+# the `pipeline` metric kind and renders a STEP TIMELINE: each step shows
+# done / running / pending / failed, its start→finish, and its duration. A step left
+# RUNNING while the overall status is FAILURE is shown as failed, and a FAILURE
+# raises the page-top alert banner with the last error.
+#
+# CADENCE CAVEAT
+# --------------
+# data-monitoring is a once-a-day job (~06:30 Paris). For a multi-day pipeline that is
+# exactly right as a daily progress CHECKPOINT - the completion % is snapshotted each
+# morning, so the report also carries a day-by-day trend. For near-real-time step
+# status use tmdb-front's srvvar.php (it reads the same T_WC_SERVER_VARIABLE live);
+# this report is the archival daily view, not a live console.
+#
+# COST: one indexed LIKE 'strwikidatacrawler%' scan of the small T_WC_SERVER_VARIABLE
+# table. Trivial.
+
+slug: wikidata-etl-pipeline
+title: "Wikidata - dump ETL pipeline (14 steps)"
+source_db: WIKIDATA
+description: >
+  Step-by-step progress of the multi-day Wikidata dump ingestion (wikidata-crawler,
+  steps 101-114: download, pass1/pass2/item_cache, staging load, bulk load, media
+  resolution, cleanup). Read live from the crawler's T_WC_SERVER_VARIABLE step
+  markers and snapshotted daily. Run launched 2026-07-26 ~13:00 (Paris).
+
+metrics:
+  - key: wikidata_etl_pipeline
+    kind: pipeline
+    table: T_WC_SERVER_VARIABLE
+    var_prefix: strwikidatacrawler
+    description: "Wikidata dump ETL - 14-step pipeline"
+    long_desc: >
+      Live step timeline read from the strwikidatacrawlerstep<code>{status,startedat,
+      finishedat} server variables. The coverage bar and the daily trend are
+      steps-completed / 14. A step is 'pending' until the crawler reaches it, so early
+      in the run most steps are greyed out; they light up green as each finishes.
+    steps:
+      - {code: 101, label: "Resolve / download the .bz2 dump"}
+      - {code: 102, label: "Pass 1 - classification graph + core entity IDs"}
+      - {code: 103, label: "Validate pass 1 output"}
+      - {code: 104, label: "Pass 2 - entity rows + statements"}
+      - {code: 105, label: "Validate pass 2 output"}
+      - {code: 106, label: "Item-cache pass - referenced items"}
+      - {code: 107, label: "Validate item-cache output"}
+      - {code: 108, label: "Load NDJSON into staging tables"}
+      - {code: 109, label: "Validate staging data"}
+      - {code: 110, label: "Bulk-load target T_WC_WIKIDATA_* tables"}
+      - {code: 111, label: "Validate target tables"}
+      - {code: 112, label: "Resolve media resources"}
+      - {code: 113, label: "Validate media resources"}
+      - {code: 114, label: "Cleanup old import batches"}
+
+# --- optional, OFF by default ------------------------------------------------
+# Quantitative row counts for the DB-load stages (they only become non-zero once
+# steps 108/110 run). Scoped to the most recent import batch. Enable once you have
+# confirmed on the VPS that COUNT over the huge staging/target statement tables
+# (100M+ rows) is acceptable and that IMPORT_BATCH_ID is indexed on them.
+#
+#  - key: wikidata_staging_statements
+#    table: STG_T_WC_WIKIDATA_STATEMENT
+#    description: "Staging statements loaded (latest batch)"
+#    long_desc: >
+#      Rows in STG_T_WC_WIKIDATA_STATEMENT for the most recent IMPORT_BATCH_ID.
+#      Fills during step 108 (load staging); 0 before then. No denominator - the
+#      total is only known once pass2 has emitted every NDJSON line.
+#    done_sql: >
+#      SELECT COUNT(*) FROM STG_T_WC_WIKIDATA_STATEMENT
+#      WHERE IMPORT_BATCH_ID = (SELECT MAX(IMPORT_BATCH_ID) FROM STG_T_WC_WIKIDATA_STATEMENT)
+#    expected_sql: "SELECT COUNT(*) FROM STG_T_WC_WIKIDATA_STATEMENT"
+#
+#  - key: wikidata_target_statements
+#    table: T_WC_WIKIDATA_STATEMENT
+#    description: "Target statements bulk-loaded (latest batch)"
+#    long_desc: >
+#      Rows in T_WC_WIKIDATA_STATEMENT for the most recent IMPORT_BATCH_ID. Fills
+#      during step 110 (bulk load); trails the staging count until the load finishes.
+#    done_sql: >
+#      SELECT COUNT(*) FROM T_WC_WIKIDATA_STATEMENT
+#      WHERE IMPORT_BATCH_ID = (SELECT MAX(IMPORT_BATCH_ID) FROM T_WC_WIKIDATA_STATEMENT)
+#    expected_sql: >
+#      SELECT COUNT(*) FROM STG_T_WC_WIKIDATA_STATEMENT
+#      WHERE IMPORT_BATCH_ID = (SELECT MAX(IMPORT_BATCH_ID) FROM STG_T_WC_WIKIDATA_STATEMENT)

@@ -64,6 +64,66 @@ def _sql(metric, key, params):
     return sql
 
 
+def _parse_dt(s):
+    """Parse a 'YYYY-MM-DD HH:MM:SS' server-variable timestamp; None on failure."""
+    if not s:
+        return None
+    try:
+        return datetime.datetime.strptime(str(s)[:19], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+
+
+def _fmt_duration(seconds):
+    if seconds is None or seconds < 0:
+        return None
+    seconds = int(seconds)
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h{m:02d}m"
+    if m:
+        return f"{m}m{s:02d}s"
+    return f"{s}s"
+
+
+def _build_pipeline(vars_, steps, run_dt, overall_status):
+    """Turn <prefix>step<code>{status,startedat,finishedat} vars into step states.
+
+    Returns (steplist, done_count). Each step: code, label, state
+    (done|running|failed|pending), started, finished, duration. A step is FAILED
+    when the whole run is in FAILURE and that step is the one left RUNNING.
+    """
+    now = run_dt.replace(tzinfo=None)
+    out = []
+    done = 0
+    for st in steps:
+        code = st["code"]
+        status = (vars_.get(f"step{code}status", (None,))[0] or "").upper()
+        started = _parse_dt(vars_.get(f"step{code}startedat", (None,))[0])
+        finished = _parse_dt(vars_.get(f"step{code}finishedat", (None,))[0])
+        if status == "SUCCESS":
+            state = "done"
+            done += 1
+        elif status == "RUNNING":
+            state = "failed" if overall_status == "FAILURE" else "running"
+        else:
+            state = "pending"
+        if finished and started:
+            duration = _fmt_duration((finished - started).total_seconds())
+        elif state == "running" and started:
+            duration = _fmt_duration((now - started).total_seconds())
+        else:
+            duration = None
+        out.append({
+            "code": code, "label": st["label"], "state": state,
+            "started": str(started) if started else None,
+            "finished": str(finished) if finished else None,
+            "duration": duration,
+        })
+    return out, done
+
+
 def run_report(conn, manifest, run_dt):
     """Execute every metric, persist a snapshot, return the result rows for render."""
     import db
@@ -75,6 +135,48 @@ def run_report(conn, manifest, run_dt):
     results = []
     for order, m in enumerate(manifest["metrics"], start=1):
         kind = m.get("kind", "coverage")
+
+        # A `pipeline` metric tracks a multi-step batch job whose orchestrator
+        # writes one T_WC_SERVER_VARIABLE row per step (<prefix>step<code>status /
+        # startedat / finishedat). It renders as a step timeline; the snapshot
+        # stores steps-done / total so the daily completion % builds a trend.
+        if kind == "pipeline":
+            prefix = m["var_prefix"]
+            allvars = db.server_variables(conn, prefix)
+            # strip the prefix so keys are 'step101status', 'status', ...
+            vars_ = {k[len(prefix):]: v for k, v in allvars.items()}
+            overall_status = (vars_.get("status", (None,))[0] or "").upper()
+            steps = m["steps"]
+            steplist, done = _build_pipeline(vars_, steps, run_dt, overall_status)
+            total = len(steps)
+            pct = _pct(done, total)
+            row = {
+                "REPORT_SLUG": slug, "SOURCE_DB": source_db, "TABLE_NAME": m["table"],
+                "METRIC_KEY": m["key"], "DONE_COUNT": done, "EXPECTED_COUNT": total,
+                "PCT": pct, "DAILY_RATE": None,
+                "DESCRIPTION": m["description"], "LONG_DESC": m.get("long_desc"),
+                "DELETED": 0, "DISPLAY_ORDER": order,
+                "ID_CREATOR": 0, "DAT_CREAT": dat, "ID_OWNER": 0,
+                "TIM_UPDATED": tim, "ID_USER_UPDATED": 0,
+            }
+            db.upsert_snapshot(conn, row)
+            trend = [(str(a), b) for (a, b) in db.pct_history(conn, slug, m["key"])]
+            if not trend or trend[-1][0] != str(dat):
+                trend.append((str(dat), pct))
+            results.append({
+                "key": m["key"], "description": m["description"],
+                "long_desc": m.get("long_desc"), "kind": "pipeline",
+                "done": done, "expected": total, "pct": pct,
+                "trend": trend, "trend_kind": "pct",
+                "steps": steplist, "overall_status": overall_status or "UNKNOWN",
+                "current_process": vars_.get("currentprocess", (None,))[0],
+                "started_at": vars_.get("startdatetime", (None,))[0],
+                "ended_at": vars_.get("enddatetime", (None,))[0],
+                "runtime": vars_.get("totalruntime", (None,))[0],
+                "last_error": vars_.get("lasterror", (None,))[0] if overall_status == "FAILURE" else None,
+                "alert": overall_status == "FAILURE",
+            })
+            continue
 
         # An `alert_zero` metric is an INVARIANT, not a coverage %: its done_sql
         # counts rows that must never exist (a regression guard). done == 0 is
@@ -399,12 +501,63 @@ def _sample_tmdb_poster_invariants():
                   "2026-07-25 06:30 (SAMPLE)", "tmdb-poster-invariants-20260725.html")
 
 
+def _sample_wikidata_pipeline():
+    """Seeded preview of the wikidata-etl-pipeline report.
+
+    A mid-run snapshot: download + pass1 done, pass2 running, the rest pending — so
+    the timeline shows all four step states at once. Overall RUNNING.
+    """
+    report = {
+        "slug": "wikidata-etl-pipeline",
+        "title": "Wikidata — dump ETL pipeline (14 steps)",
+        "description": ("Step-by-step progress of the multi-day Wikidata dump ingestion. SAMPLE DATA — "
+                        "a mid-run snapshot (pass 2 in progress)."),
+    }
+    labels = [
+        "Resolve / download the .bz2 dump", "Pass 1 - classification graph + core entity IDs",
+        "Validate pass 1 output", "Pass 2 - entity rows + statements", "Validate pass 2 output",
+        "Item-cache pass - referenced items", "Validate item-cache output",
+        "Load NDJSON into staging tables", "Validate staging data",
+        "Bulk-load target T_WC_WIKIDATA_* tables", "Validate target tables",
+        "Resolve media resources", "Validate media resources", "Cleanup old import batches",
+    ]
+    # states for the 14 steps: 101 download done, 102-103 pass1 done, 104 running, rest pending
+    states = ["done", "done", "done", "running"] + ["pending"] * 10
+    times = {
+        101: ("2026-07-26 13:02", "2026-07-26 18:41", "5h39m"),
+        102: ("2026-07-26 18:41", "2026-07-26 23:07", "4h26m"),
+        103: ("2026-07-26 23:07", "2026-07-26 23:09", "2m"),
+        104: ("2026-07-26 23:09", None, "7h30m"),
+    }
+    steps = []
+    for i, (label, state) in enumerate(zip(labels, states), start=0):
+        code = 101 + i
+        started, finished, dur = times.get(code, (None, None, None))
+        steps.append({"code": code, "label": label, "state": state,
+                      "started": started, "finished": finished, "duration": dur})
+    done = sum(1 for s in steps if s["state"] == "done")
+    base = datetime.date(2026, 7, 26)
+    trend = [(str(base), round(100.0 * done / 14, 2))]
+    results = [{
+        "key": "wikidata_etl_pipeline", "description": "Wikidata dump ETL - 14-step pipeline",
+        "long_desc": "Live step timeline read from the crawler's server variables; the bar and daily "
+                     "trend are steps-completed / 14.",
+        "kind": "pipeline", "done": done, "expected": 14, "pct": round(100.0 * done / 14, 2),
+        "trend": trend, "trend_kind": "pct", "steps": steps, "overall_status": "RUNNING",
+        "current_process": "104: run ETL pass2", "started_at": "2026-07-26 13:02:11",
+        "ended_at": None, "runtime": "RUNNING", "last_error": None, "alert": False,
+    }]
+    _write_sample("wikidata-etl-pipeline", report, results,
+                  "2026-07-27 06:30 (SAMPLE)", "wikidata-etl-pipeline-20260727.html")
+
+
 def _sample():
     _sample_tmdb_tv()
     _sample_wikipedia_refresh()
     _sample_tmdb_neighbours()
     _sample_tmdb_company_wikidata()
     _sample_tmdb_poster_invariants()
+    _sample_wikidata_pipeline()
 
 
 def _sample_tmdb_tv():
@@ -482,6 +635,12 @@ def _print_sql(report=None):
                       f"(also in {seen[dupkey]}) — snapshot rows would collide")
             seen[dupkey] = manifest["slug"]
             print(f"\n  [{m['key']}] {m['description']}")
+            if m.get("kind") == "pipeline":
+                print(f"    pipeline: reads T_WC_SERVER_VARIABLE LIKE "
+                      f"'{m['var_prefix']}%' — {len(m.get('steps') or [])} steps")
+                continue
+            if m.get("kind") == "alert_zero":
+                print("    kind: alert_zero (count must stay 0)")
             for field in ("done_sql", "expected_sql", "trend_sql"):
                 if m.get(field):
                     print(f"    {field}: {_sql(m, field, params)}")
