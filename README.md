@@ -133,13 +133,25 @@ the switch, and how fast*.
   `T_WC_WIKIPEDIA_PAGE_LANG_SECTION.TIM_UPDATED`), and the share of freshly written
   sections carrying an H3 composite title - the signature proving the deployed image
   really is the post-016 build.
-- **By-type report** - the same coverage per `ITEM_TYPE`, ordered like the crawler's
-  own priority list (`arrquickprocessids`, stalest family first). The crawler walks one
-  family at a time, so a family sits near 0% until its process runs and then jumps to
-  ~100%; the global percentage alone hides that.
+- **By-type report** - the same coverage per content family, ordered like the crawler's
+  own priority list (`arrquickprocessids`). The crawler walks one family at a time, so a
+  family sits near 0% until its process runs and then jumps to ~100%; the global
+  percentage alone hides that.
 
-A zero in these reports never means "upstream has no value" - it means the crawler has
-not reached that slice yet.
+  Each family is anchored in its **source table** (`T_WC_T2S_AWARD`, `T_WC_TMDB_MOVIE`,
+  …, the `sourcetable` column of `CONTENT_CONFIG` in `wikipedia-crawler`), joined to
+  `T_WC_WIKIPEDIA_PAGE_LANG` on `ID_WIKIDATA` with **no `ITEM_TYPE` filter**. Until
+  2026-08-11 both halves of the fraction were `WHERE ITEM_TYPE = '<family>'`, which
+  measures *which process wrote the row* rather than *which family the entity belongs
+  to*: process `203 item` crawls all of `T_WC_WIKIDATA_ITEM_V1` and runs first, so an
+  award that is also a Wikidata item is crawled **as an item** and `215 award` owns no
+  row at all. `award`, `collection`, `group` and `death` therefore read `0 done /
+  0 expected` and printed `-`, which looked like "not crawled" when the truth was the
+  opposite. Consequence of the fix: families no longer partition, so per-family counts
+  do **not** sum to the global report's total.
+
+A zero in the global report never means "upstream has no value" - it means the crawler
+has not reached that slice yet.
 
 ### `tmdb-neighbours-backfill`
 
