@@ -1,0 +1,99 @@
+# data-monitoring report manifest - additive TMDb movie release dates.
+#
+# tmdb-crawler Process 34 backfills /movie/{id}/release_dates into
+# T_WC_TMDB_MOVIE_RELEASE_DATE without changing T_WC_TMDB_MOVIE.DAT_RELEASE.
+# A successful TMDb response may contain no release rows, so the parent marker
+# TIM_RELEASE_DATES_COMPLETED is the authoritative completion signal. Child-table
+# fill is an upstream-content observation, not a crawl-completion measure.
+#
+# The child table is an authoritative snapshot: each successful refresh replaces
+# all rows for the movie. DAT_CREAT and TIM_UPDATED therefore describe the current
+# snapshot, not an append-only history. Only the completion metric uses a source
+# trend. All other trends come from T_WC_DATA_MONITORING_SNAPSHOT.
+
+slug: tmdb-release-dates-coverage
+title: "TMDb - movie release dates coverage"
+source_db: TMDB
+description: >
+  Coverage, freshness and structural quality of the additive TMDb movie release-date
+  snapshots gathered by tmdb-crawler Process 34. The main movie DAT_RELEASE remains
+  unchanged. Completion is measured by TIM_RELEASE_DATES_COMPLETED; a completed movie
+  with no child row is a valid empty TMDb response.
+
+params:
+  eligible_movie: >-
+    M.DELETED = 0 AND M.TIM_CREDITS_COMPLETED IS NOT NULL AND NOT EXISTS
+    (SELECT 1 FROM T_WC_TMDB_ID_NOT_FOUND NF
+     WHERE NF.ENTITY_TYPE = 'movie' AND NF.ID_ENTITY = M.ID_MOVIE
+       AND NF.TIM_RETRY_AFTER > NOW())
+
+metrics:
+  - key: movie_release_dates_completion
+    table: T_WC_TMDB_MOVIE
+    description: "Eligible movies with release dates completed"
+    long_desc: >
+      Eligible movies stamped by Process 34 or a full movie refresh, over the exact
+      eligible universe used by the crawler: active movies with credits completed and
+      no active TMDb-34 retry exclusion. This is the authoritative backfill metric,
+      including successful empty responses. The source sparkline groups the current
+      completion marker by day; after the first pass it becomes refresh throughput.
+    warn_below: 50
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie}"
+    trend_sql: "SELECT DATE(M.TIM_RELEASE_DATES_COMPLETED) AS COMPLETION_DAY, COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL GROUP BY COMPLETION_DAY ORDER BY COMPLETION_DAY"
+
+  - key: movie_release_dates_fresh_35d
+    table: T_WC_TMDB_MOVIE
+    description: "Completed release-date snapshots refreshed within 35 days"
+    long_desc: >
+      Completed eligible movies whose release-date marker is no more than 35 days old.
+      This monitors the crawler's roughly 30-day refresh cadence. It is a rolling
+      freshness share, not a monotonic campaign, so decreases are meaningful and no ETA
+      is projected.
+    warn_below: 80
+    show_eta: false
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED >= NOW() - INTERVAL 35 DAY"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL"
+
+  - key: movie_release_dates_fill
+    table: T_WC_TMDB_MOVIE_RELEASE_DATE
+    description: "Completed movies with at least one release event"
+    long_desc: >
+      Completed eligible movies that currently have at least one stored release event.
+      This cannot reach 100% because TMDb can legitimately return an empty results set;
+      the gap is upstream absence, not an unfinished crawl. Rows are replaced on every
+      successful refresh, so this share can move in either direction.
+    warn_below: 5
+    show_eta: false
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL AND EXISTS (SELECT 1 FROM T_WC_TMDB_MOVIE_RELEASE_DATE R WHERE R.ID_MOVIE = M.ID_MOVIE AND R.DELETED = 0)"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL"
+
+  - key: movie_release_dates_parsed_share
+    table: T_WC_TMDB_MOVIE_RELEASE_DATE
+    description: "Release events with a parsed timestamp"
+    long_desc: >
+      Current release-event rows whose TMDb date was parsed into TIM_RELEASE. The raw
+      source value remains in RELEASE_DATE_RAW. A drop points to a new or malformed
+      upstream date shape; TIM_RELEASE is an event date, never a crawl-freshness field.
+    warn_below: 99
+    show_eta: false
+    rate_label: "rows/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_RELEASE_DATE R JOIN T_WC_TMDB_MOVIE M ON M.ID_MOVIE = R.ID_MOVIE WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL AND R.DELETED = 0 AND R.TIM_RELEASE IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_RELEASE_DATE R JOIN T_WC_TMDB_MOVIE M ON M.ID_MOVIE = R.ID_MOVIE WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL AND R.DELETED = 0"
+
+  - key: movie_release_dates_structural_integrity
+    table: T_WC_TMDB_MOVIE_RELEASE_DATE
+    description: "Release events with valid core fields"
+    long_desc: >
+      Share of current rows with an uppercase ISO country, a raw date, a TMDb release
+      type from 1 to 6, valid descriptors JSON when present, and positive response
+      ordering. Certification, language and note are optional upstream and are not
+      treated as failures.
+    warn_below: 99
+    show_eta: false
+    rate_label: "rows/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_RELEASE_DATE R JOIN T_WC_TMDB_MOVIE M ON M.ID_MOVIE = R.ID_MOVIE WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL AND R.DELETED = 0 AND BINARY R.COUNTRY_CODE REGEXP '^[A-Z]{{2}}$' AND R.RELEASE_DATE_RAW IS NOT NULL AND R.RELEASE_DATE_RAW <> '' AND R.RELEASE_TYPE BETWEEN 1 AND 6 AND (R.DESCRIPTORS_JSON IS NULL OR JSON_VALID(R.DESCRIPTORS_JSON)) AND R.COUNTRY_DISPLAY_ORDER > 0 AND R.DISPLAY_ORDER > 0"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_RELEASE_DATE R JOIN T_WC_TMDB_MOVIE M ON M.ID_MOVIE = R.ID_MOVIE WHERE {eligible_movie} AND M.TIM_RELEASE_DATES_COMPLETED IS NOT NULL AND R.DELETED = 0"

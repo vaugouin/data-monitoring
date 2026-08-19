@@ -231,7 +231,8 @@ def run_report(conn, manifest, run_dt):
             "long_desc": m.get("long_desc"), "warn_below": m.get("warn_below", 50),
             "done": done, "expected": expected, "pct": pct, "daily_rate": daily_rate,
             "trend": trend, "trend_kind": trend_kind,
-            "rate_label": m.get("rate_label"), "kind": kind,
+            "rate_label": m.get("rate_label"), "show_eta": m.get("show_eta", True),
+            "kind": kind,
             "alert": (kind == "alert_zero" and (done or 0) > 0),
         })
     return results
@@ -592,6 +593,132 @@ def _sample_wikidata_pipeline():
                   "2026-07-27 06:30 (SAMPLE)", "wikidata-etl-pipeline-20260727.html")
 
 
+def _sample_tmdb_release_dates():
+    """Seeded preview of additive movie release-date coverage and quality."""
+    report = {
+        "slug": "tmdb-release-dates-coverage",
+        "title": "TMDb - movie release dates coverage",
+        "description": ("Coverage, freshness and structural quality of additive TMDb movie "
+                        "release-date snapshots. SAMPLE DATA - numbers are illustrative."),
+    }
+    base = datetime.date(2026, 8, 16)
+    gather_rate = [(str(base + datetime.timedelta(days=i)), 5000) for i in range(4)]
+    fresh_history = [(str(base + datetime.timedelta(days=i)), 100.0) for i in range(4)]
+    fill_history = [(str(base + datetime.timedelta(days=i)), 89.9 + i * 0.5)
+                    for i in range(4)]
+    quality_history = [(str(base + datetime.timedelta(days=i)), 99.65 + i * 0.03)
+                       for i in range(4)]
+    results = [
+        {"key": "movie_release_dates_completion",
+         "description": "Eligible movies with release dates completed",
+         "long_desc": "The parent completion marker is authoritative, including valid empty responses.",
+         "warn_below": 50, "rate_label": "movies/day",
+         "done": 124600, "expected": 905000, "pct": 13.77,
+         "daily_rate": gather_rate[-1][1], "trend": gather_rate, "trend_kind": "rate"},
+        {"key": "movie_release_dates_fresh_35d",
+         "description": "Completed release-date snapshots refreshed within 35 days",
+         "long_desc": "Rolling freshness of completed snapshots; no ETA because the share can decrease.",
+         "warn_below": 80, "rate_label": "movies/day", "show_eta": False,
+         "done": 124600, "expected": 124600, "pct": 100.0,
+         "daily_rate": 5000, "trend": fresh_history, "trend_kind": "pct"},
+        {"key": "movie_release_dates_fill",
+         "description": "Completed movies with at least one release event",
+         "long_desc": "A valid empty TMDb response writes no child row, so this is not completion.",
+         "warn_below": 5, "rate_label": "movies/day", "show_eta": False,
+         "done": 113900, "expected": 124600, "pct": 91.41,
+         "daily_rate": 4510, "trend": fill_history, "trend_kind": "pct"},
+        {"key": "movie_release_dates_parsed_share",
+         "description": "Release events with a parsed timestamp",
+         "long_desc": "Share of current rows whose raw source date parsed into TIM_RELEASE.",
+         "warn_below": 99, "rate_label": "rows/day", "show_eta": False,
+         "done": 1659400, "expected": 1663000, "pct": 99.78,
+         "daily_rate": None, "trend": quality_history, "trend_kind": "pct"},
+        {"key": "movie_release_dates_structural_integrity",
+         "description": "Release events with valid core fields",
+         "long_desc": "ISO country, raw date, release type, JSON and response ordering checks.",
+         "warn_below": 99, "rate_label": "rows/day", "show_eta": False,
+         "done": 1658100, "expected": 1663000, "pct": 99.71,
+         "daily_rate": -120, "trend": quality_history, "trend_kind": "pct"},
+    ]
+    _write_sample("tmdb-release-dates-coverage", report, results,
+                  "2026-08-19 06:30 (SAMPLE)",
+                  "tmdb-release-dates-coverage-20260819.html")
+
+
+def _sample_tmdb_watch_providers():
+    """Seeded preview of movie and series watch-provider snapshots."""
+    report = {
+        "slug": "tmdb-watch-providers-coverage",
+        "title": "TMDb - watch providers coverage",
+        "description": ("Coverage, freshness and attribution integrity of country-specific TMDb / "
+                        "JustWatch snapshots. SAMPLE DATA - numbers are illustrative."),
+    }
+    base = datetime.date(2026, 8, 16)
+    movie_rate = [(str(base + datetime.timedelta(days=i)), 5000) for i in range(4)]
+    serie_rate = [(str(base + datetime.timedelta(days=i)), 5000 if i < 3 else 2800)
+                  for i in range(4)]
+    fresh_history = [(str(base + datetime.timedelta(days=i)), 100.0) for i in range(4)]
+    movie_fill_history = [(str(base + datetime.timedelta(days=i)), 61.1 + i * 0.5)
+                          for i in range(4)]
+    serie_fill_history = [(str(base + datetime.timedelta(days=i)), 70.1 + i * 0.7)
+                          for i in range(4)]
+    quality_history = [(str(base + datetime.timedelta(days=i)), 99.91 + i * 0.02)
+                       for i in range(4)]
+    results = [
+        {"key": "movie_watch_providers_completion",
+         "description": "Eligible movies with watch providers completed",
+         "long_desc": "Process 35 completion marker, including valid empty responses.",
+         "warn_below": 50, "rate_label": "movies/day",
+         "done": 119500, "expected": 905000, "pct": 13.20,
+         "daily_rate": movie_rate[-1][1], "trend": movie_rate, "trend_kind": "rate"},
+        {"key": "serie_watch_providers_completion",
+         "description": "Eligible series with watch providers completed",
+         "long_desc": "Process 36 completion marker for series-level provider snapshots.",
+         "warn_below": 50, "rate_label": "series/day",
+         "done": 42800, "expected": 148000, "pct": 28.92,
+         "daily_rate": serie_rate[-1][1], "trend": serie_rate, "trend_kind": "rate"},
+        {"key": "movie_watch_providers_fresh_35d",
+         "description": "Completed movie-provider snapshots refreshed within 35 days",
+         "long_desc": "Rolling freshness of completed movie snapshots.",
+         "warn_below": 80, "rate_label": "movies/day", "show_eta": False,
+         "done": 119500, "expected": 119500, "pct": 100.0,
+         "daily_rate": 5000, "trend": fresh_history, "trend_kind": "pct"},
+        {"key": "serie_watch_providers_fresh_35d",
+         "description": "Completed series-provider snapshots refreshed within 35 days",
+         "long_desc": "Rolling freshness of completed series snapshots.",
+         "warn_below": 80, "rate_label": "series/day", "show_eta": False,
+         "done": 42800, "expected": 42800, "pct": 100.0,
+         "daily_rate": 2800, "trend": fresh_history, "trend_kind": "pct"},
+        {"key": "movie_watch_providers_fill",
+         "description": "Completed movies with at least one listed provider",
+         "long_desc": "Current provider presence, not crawl completion; empty responses are valid.",
+         "warn_below": 5, "rate_label": "movies/day", "show_eta": False,
+         "done": 74800, "expected": 119500, "pct": 62.59,
+         "daily_rate": 2900, "trend": movie_fill_history, "trend_kind": "pct"},
+        {"key": "serie_watch_providers_fill",
+         "description": "Completed series with at least one listed provider",
+         "long_desc": "Series-level current availability, distinct from network metadata.",
+         "warn_below": 5, "rate_label": "series/day", "show_eta": False,
+         "done": 30900, "expected": 42800, "pct": 72.20,
+         "daily_rate": -45, "trend": serie_fill_history, "trend_kind": "pct"},
+        {"key": "movie_watch_provider_integrity",
+         "description": "Movie-provider rows with valid core fields and attribution",
+         "long_desc": "Country, mode, provider id, attribution link, timestamp and order checks.",
+         "warn_below": 99, "rate_label": "rows/day", "show_eta": False,
+         "done": 897740, "expected": 898000, "pct": 99.97,
+         "daily_rate": None, "trend": quality_history, "trend_kind": "pct"},
+        {"key": "serie_watch_provider_integrity",
+         "description": "Series-provider rows with valid core fields and attribution",
+         "long_desc": "Series counterpart of the movie provider integrity share.",
+         "warn_below": 99, "rate_label": "rows/day", "show_eta": False,
+         "done": 382910, "expected": 383000, "pct": 99.98,
+         "daily_rate": None, "trend": quality_history, "trend_kind": "pct"},
+    ]
+    _write_sample("tmdb-watch-providers-coverage", report, results,
+                  "2026-08-19 06:30 (SAMPLE)",
+                  "tmdb-watch-providers-coverage-20260819.html")
+
+
 def _sample():
     _sample_tmdb_tv()
     _sample_wikipedia_refresh()
@@ -599,6 +726,8 @@ def _sample():
     _sample_tmdb_company_wikidata()
     _sample_tmdb_poster_invariants()
     _sample_wikidata_pipeline()
+    _sample_tmdb_release_dates()
+    _sample_tmdb_watch_providers()
 
 
 def _sample_tmdb_tv():

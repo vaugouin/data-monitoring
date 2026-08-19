@@ -1,0 +1,138 @@
+# data-monitoring report manifest - TMDb / JustWatch watch-provider snapshots.
+#
+# tmdb-crawler Processes 35 and 36 backfill country-specific movie and TV-series
+# watch providers. These rows answer current stream/free/ads/rent/buy availability;
+# they are distinct from the stable TV network relation and from cinema showtimes.
+# The TMDb link is the attribution path supplied with the JustWatch data.
+#
+# A successful response may contain no provider rows. Completion therefore comes
+# from the parent TIM_WATCH_PROVIDERS_COMPLETED markers, never from child-table fill.
+# Child rows are transactionally deleted/reinserted on refresh, so their DAT_CREAT is
+# current-snapshot time rather than append-only history. Fill, freshness and quality
+# are non-monotonic and deliberately suppress ETA projections.
+
+slug: tmdb-watch-providers-coverage
+title: "TMDb - watch providers coverage"
+source_db: TMDB
+description: >
+  Coverage, freshness and attribution integrity of the country-specific TMDb /
+  JustWatch provider snapshots gathered for movies and TV series by tmdb-crawler
+  Processes 35 and 36. Completion markers count valid empty responses; child-table
+  fill only describes how often TMDb currently lists an offer.
+
+params:
+  eligible_movie: >-
+    M.DELETED = 0 AND M.TIM_CREDITS_COMPLETED IS NOT NULL AND NOT EXISTS
+    (SELECT 1 FROM T_WC_TMDB_ID_NOT_FOUND NF
+     WHERE NF.ENTITY_TYPE = 'movie' AND NF.ID_ENTITY = M.ID_MOVIE
+       AND NF.TIM_RETRY_AFTER > NOW())
+  eligible_serie: >-
+    S.DELETED = 0 AND S.TIM_CREDITS_COMPLETED IS NOT NULL AND NOT EXISTS
+    (SELECT 1 FROM T_WC_TMDB_ID_NOT_FOUND NF
+     WHERE NF.ENTITY_TYPE = 'serie' AND NF.ID_ENTITY = S.ID_SERIE
+       AND NF.TIM_RETRY_AFTER > NOW())
+
+metrics:
+  - key: movie_watch_providers_completion
+    table: T_WC_TMDB_MOVIE
+    description: "Eligible movies with watch providers completed"
+    long_desc: >
+      Movies stamped by Process 35 or a full refresh, over the crawler's exact eligible
+      movie universe. This is the authoritative movie backfill metric and includes
+      successful empty responses. After the first pass, the source sparkline reads as
+      current refresh throughput rather than first-time gathering only.
+    warn_below: 50
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie}"
+    trend_sql: "SELECT DATE(M.TIM_WATCH_PROVIDERS_COMPLETED) AS COMPLETION_DAY, COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL GROUP BY COMPLETION_DAY ORDER BY COMPLETION_DAY"
+
+  - key: serie_watch_providers_completion
+    table: T_WC_TMDB_SERIE
+    description: "Eligible series with watch providers completed"
+    long_desc: >
+      Series stamped by Process 36 or a full refresh, over the crawler's exact eligible
+      series universe. This marker is authoritative even when TMDb returns no provider.
+      The data is series-level; season-specific availability is outside this dataset.
+    warn_below: 50
+    rate_label: "series/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {eligible_serie} AND S.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {eligible_serie}"
+    trend_sql: "SELECT DATE(S.TIM_WATCH_PROVIDERS_COMPLETED) AS COMPLETION_DAY, COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {eligible_serie} AND S.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL GROUP BY COMPLETION_DAY ORDER BY COMPLETION_DAY"
+
+  - key: movie_watch_providers_fresh_35d
+    table: T_WC_TMDB_MOVIE
+    description: "Completed movie-provider snapshots refreshed within 35 days"
+    long_desc: >
+      Completed movie snapshots no more than 35 days old. Provider availability changes
+      by country and over time, so this rolling freshness share is more important than
+      child-row age. It monitors the crawler's roughly 30-day refresh cadence.
+    warn_below: 80
+    show_eta: false
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_WATCH_PROVIDERS_COMPLETED >= NOW() - INTERVAL 35 DAY"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL"
+
+  - key: serie_watch_providers_fresh_35d
+    table: T_WC_TMDB_SERIE
+    description: "Completed series-provider snapshots refreshed within 35 days"
+    long_desc: >
+      Series equivalent of the 35-day movie freshness share. A decrease means the
+      refresh loop is falling behind; it is not progress moving backwards.
+    warn_below: 80
+    show_eta: false
+    rate_label: "series/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {eligible_serie} AND S.TIM_WATCH_PROVIDERS_COMPLETED >= NOW() - INTERVAL 35 DAY"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {eligible_serie} AND S.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL"
+
+  - key: movie_watch_providers_fill
+    table: T_WC_TMDB_MOVIE_WATCH_PROVIDER
+    description: "Completed movies with at least one listed provider"
+    long_desc: >
+      Completed eligible movies that currently have at least one country/provider/mode
+      row. This cannot reach 100%: no child row may simply mean TMDb / JustWatch lists
+      no current offer. Because snapshots are replaced, this share can rise or fall.
+    warn_below: 5
+    show_eta: false
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL AND EXISTS (SELECT 1 FROM T_WC_TMDB_MOVIE_WATCH_PROVIDER P WHERE P.ID_MOVIE = M.ID_MOVIE AND P.DELETED = 0)"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {eligible_movie} AND M.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL"
+
+  - key: serie_watch_providers_fill
+    table: T_WC_TMDB_SERIE_WATCH_PROVIDER
+    description: "Completed series with at least one listed provider"
+    long_desc: >
+      Series-level equivalent of movie provider fill. It records current country-level
+      availability, not the series' network and not season-level availability.
+    warn_below: 5
+    show_eta: false
+    rate_label: "series/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {eligible_serie} AND S.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL AND EXISTS (SELECT 1 FROM T_WC_TMDB_SERIE_WATCH_PROVIDER P WHERE P.ID_SERIE = S.ID_SERIE AND P.DELETED = 0)"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {eligible_serie} AND S.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL"
+
+  - key: movie_watch_provider_integrity
+    table: T_WC_TMDB_MOVIE_WATCH_PROVIDER
+    description: "Movie-provider rows with valid core fields and attribution"
+    long_desc: >
+      Current movie rows with an uppercase ISO country, one supported monetization
+      mode, a provider id, the TMDb / JustWatch attribution link, a snapshot timestamp
+      and positive response ordering. Provider name and logo are not required because
+      they may be absent upstream.
+    warn_below: 99
+    show_eta: false
+    rate_label: "rows/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_WATCH_PROVIDER P JOIN T_WC_TMDB_MOVIE M ON M.ID_MOVIE = P.ID_MOVIE WHERE {eligible_movie} AND M.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL AND P.DELETED = 0 AND BINARY P.COUNTRY_CODE REGEXP '^[A-Z]{{2}}$' AND P.MONETIZATION_TYPE IN ('flatrate','free','ads','rent','buy') AND P.ID_PROVIDER > 0 AND P.TMDB_LINK IS NOT NULL AND P.TMDB_LINK <> '' AND P.TIM_PROVIDER_UPDATED IS NOT NULL AND P.COUNTRY_DISPLAY_ORDER > 0 AND P.DISPLAY_ORDER > 0"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE_WATCH_PROVIDER P JOIN T_WC_TMDB_MOVIE M ON M.ID_MOVIE = P.ID_MOVIE WHERE {eligible_movie} AND M.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL AND P.DELETED = 0"
+
+  - key: serie_watch_provider_integrity
+    table: T_WC_TMDB_SERIE_WATCH_PROVIDER
+    description: "Series-provider rows with valid core fields and attribution"
+    long_desc: >
+      Series counterpart of movie_watch_provider_integrity. A fall below 100% should
+      be investigated because the attribution link and snapshot timestamp are needed
+      to describe availability responsibly.
+    warn_below: 99
+    show_eta: false
+    rate_label: "rows/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE_WATCH_PROVIDER P JOIN T_WC_TMDB_SERIE S ON S.ID_SERIE = P.ID_SERIE WHERE {eligible_serie} AND S.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL AND P.DELETED = 0 AND BINARY P.COUNTRY_CODE REGEXP '^[A-Z]{{2}}$' AND P.MONETIZATION_TYPE IN ('flatrate','free','ads','rent','buy') AND P.ID_PROVIDER > 0 AND P.TMDB_LINK IS NOT NULL AND P.TMDB_LINK <> '' AND P.TIM_PROVIDER_UPDATED IS NOT NULL AND P.COUNTRY_DISPLAY_ORDER > 0 AND P.DISPLAY_ORDER > 0"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE_WATCH_PROVIDER P JOIN T_WC_TMDB_SERIE S ON S.ID_SERIE = P.ID_SERIE WHERE {eligible_serie} AND S.TIM_WATCH_PROVIDERS_COMPLETED IS NOT NULL AND P.DELETED = 0"

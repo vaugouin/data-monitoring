@@ -112,6 +112,48 @@ Four metrics: episode + season `*_series_completion` (the `TIM_*_COMPLETED` flag
 crawler stamps) and episode + season `*_volume_fill` (rows stored vs TMDb's reported
 totals).
 
+### `tmdb-release-dates-coverage`
+
+Coverage, freshness and structural quality of the additive movie release-date
+snapshots gathered by tmdb-crawler Process 34 from `/movie/{id}/release_dates`.
+This report does **not** monitor or reinterpret `T_WC_TMDB_MOVIE.DAT_RELEASE`; the
+main release date remains on its existing crawler path.
+
+- `movie_release_dates_completion` uses the parent
+  `TIM_RELEASE_DATES_COMPLETED` marker over the crawler's eligible universe. This is
+  the authoritative backfill signal because a successful TMDb response may contain
+  no release rows.
+- `movie_release_dates_fresh_35d` monitors the roughly 30-day refresh cadence.
+- `movie_release_dates_fill` shows how many completed movies currently have at least
+  one release event. It cannot structurally reach 100% and is not an ETA metric.
+- `movie_release_dates_parsed_share` and
+  `movie_release_dates_structural_integrity` monitor timestamp parsing and required
+  country/type/order fields.
+
+The child table is an authoritative snapshot, deleted and reinserted per movie on a
+successful refresh. Its `DAT_CREAT` / `TIM_UPDATED` values are therefore current
+snapshot times, not an append-only gathering history.
+
+### `tmdb-watch-providers-coverage`
+
+Coverage, freshness and attribution integrity of movie and series watch-provider
+snapshots gathered by tmdb-crawler Processes 35 and 36. These country-specific rows
+describe current `flatrate`, `free`, `ads`, `rent` and `buy` availability. They are
+distinct from TV network metadata, season-level availability and cinema showtimes.
+
+- `movie_watch_providers_completion` and
+  `serie_watch_providers_completion` use the parent completion markers. They count
+  valid empty responses and are the authoritative backfill metrics.
+- `*_watch_providers_fresh_35d` monitors the rolling refresh cadence.
+- `*_watch_providers_fill` records current provider presence and may rise or fall as
+  availability changes.
+- `*_watch_provider_integrity` checks ISO country, supported monetization mode,
+  provider id, snapshot timestamp, ordering and the TMDb link supplied for JustWatch
+  attribution. Provider names and logos remain optional upstream fields.
+
+As with release dates, provider rows are replace-in-place snapshots. The report does
+not derive a historical availability timeline from child-table `DAT_CREAT` values.
+
 ### `wikipedia-sections-refresh` + `wikipedia-sections-refresh-by-type`
 
 Freshness of the stored Wikipedia content after `wikipedia-crawler`'s **fine-section

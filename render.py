@@ -180,7 +180,8 @@ def _metric_card(m):
         return _alert_card(m)
     pct = m.get("pct")
     warn = m.get("warn_below", 50)
-    eta = _eta(m.get("done"), m.get("expected"), m.get("daily_rate"))
+    eta = (_eta(m.get("done"), m.get("expected"), m.get("daily_rate"))
+           if m.get("show_eta", True) else None)
     trend = m.get("trend") or []
     kind = m.get("trend_kind", "pct")
     # A manifest may name the unit explicitly (`rate_label:`); otherwise fall back
@@ -188,6 +189,16 @@ def _metric_card(m):
     rate_label = m.get("rate_label") or (
         "episodes/day" if "episode" in m["key"] else (
             "seasons/day" if "season" in m["key"] else "per day"))
+    daily_rate = m.get("daily_rate")
+    if daily_rate is None:
+        rate_html = ""
+    else:
+        sign = "+" if daily_rate >= 0 else ""
+        rate_html = (f"&nbsp;·&nbsp; {sign}{_fmt_int(daily_rate)} "
+                     f"{html.escape(rate_label)}")
+    eta_html = (('&nbsp;·&nbsp; ' + html.escape(eta) +
+                 ' <span class="muted">(rough projection)</span>') if eta else '')
+    extras_html = rate_html + eta_html
     return f"""
     <section class="card">
       <div class="card-head">
@@ -198,9 +209,7 @@ def _metric_card(m):
       {_coverage_bar(pct, warn)}
       <div class="counts">
         <strong>{_fmt_int(m.get('done'))}</strong> done
-        / {_fmt_int(m.get('expected'))} expected
-        &nbsp;·&nbsp; +{_fmt_int(m.get('daily_rate'))} {rate_label}
-        {('&nbsp;·&nbsp; ' + html.escape(eta) + ' <span class="muted">(rough projection)</span>') if eta else ''}
+        / {_fmt_int(m.get('expected'))} expected{extras_html}
       </div>
       <div class="trend">
         {_sparkline(trend, kind)}

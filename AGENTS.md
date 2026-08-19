@@ -67,6 +67,13 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
 ## Reports in place
 
 - `tmdb-tv-coverage` - TMDb TV season/episode backfill (V1).
+- `tmdb-release-dates-coverage` - Process 34 coverage, 35-day freshness and
+  structural quality for the additive `T_WC_TMDB_MOVIE_RELEASE_DATE` snapshots.
+  Completion comes from `T_WC_TMDB_MOVIE.TIM_RELEASE_DATES_COMPLETED`; an empty
+  child snapshot is a valid result and `DAT_RELEASE` remains untouched.
+- `tmdb-watch-providers-coverage` - Processes 35/36 coverage, 35-day freshness,
+  current fill and attribution integrity for movie and series TMDb / JustWatch
+  snapshots. Completion comes from the parent markers, not child-row presence.
 - `wikipedia-sections-refresh` + `wikipedia-sections-refresh-by-type` - how much of the
   Wikidata universe has been re-crawled since `wikipedia-crawler`'s fine-section split
   (H2+H3, WIKIPEDIA-CRAWLER-016) went live on **2026-07-20 23:00 Paris**. Anything last
@@ -114,6 +121,12 @@ Two traps when touching these manifests:
   the indexed `TIM_UPDATED` range; a `COUNT(DISTINCT ID_WIKIDATA)` over the whole table
   would scan it entirely every night. The denominators above deliberately come from
   the small `T_WC_WIKIPEDIA_PAGE_LANG` (~1.1M rows) instead.
+- **Release-date and watch-provider child tables are authoritative snapshots.** A
+  successful refresh deletes and reinserts a title's rows, and a valid empty response
+  leaves no row while stamping the parent completion marker. Use
+  `TIM_RELEASE_DATES_COMPLETED` / `TIM_WATCH_PROVIDERS_COMPLETED` for coverage; never
+  derive a historical gather curve from child `DAT_CREAT`. Their fill and freshness
+  metrics are non-monotonic and must set `show_eta: false`.
 
 ## Conventions
 
@@ -127,7 +140,7 @@ Two traps when touching these manifests:
   `samples/`) and `--print-sql` (no DB, resolves `params:` and checks metric keys);
   validate the live path on the VPS where the DB is reachable.
 
-**Last Updated**: 2026-07-23
+**Last Updated**: 2026-08-19
 
 ## Backlog (Nestor second-brain)
 
