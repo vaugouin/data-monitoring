@@ -6,7 +6,7 @@
 -- via ON DUPLICATE KEY UPDATE on UK_SNAPSHOT_DAY).
 --
 -- Standard columns follow doc-tech "Structure type d'une table simple"
--- (tmdb-front/doc/doc-tech-20110223.md). Run once with a CREATE-privileged user.
+-- (%USERPROFILE%/Code/webathenkel-docs/doc/doc-tech-20110223.md). Run once with a CREATE-privileged user.
 -- =============================================================================
 
 CREATE TABLE `T_WC_DATA_MONITORING_SNAPSHOT` (

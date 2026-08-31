@@ -6,13 +6,13 @@ any future `GEMINI.md`) only point here. For human-facing setup, read @README.md
 ## What this repo is
 
 `data-monitoring` is the **observability** stage of the **Agent BBB** ecosystem
-(roster: `tmdb-front/doc/related-repositories/related-repositories.txt`). It does
+(roster: `%USERPROFILE%/Nestor/projets/t2s-backlog/topics/related-repositories.txt`). It does
 **not** gather or transform data. It reads the finished `T_WC_*` tables and produces
 nightly **coverage / progress reports** for long-running backfill campaigns - e.g.
 the multi-month TV season/episode gather driven by `tmdb-crawler`.
 
 It deliberately sits **outside** the entity pipeline described in
-`tmdb-front/doc/related-repositories/groups-multi-repo-management.md` (that doc is a
+`%USERPROFILE%/Nestor/projets/t2s-backlog/topics/groups-multi-repo-management.md` (that doc is a
 T2S *entity* template; this tool is orthogonal and is intentionally absent from it).
 
 Distinct from `html/back/srvvar.php` / `T_WC_SERVER_VARIABLE`, which tracks **realtime
