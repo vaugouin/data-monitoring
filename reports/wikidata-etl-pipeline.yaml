@@ -2,13 +2,14 @@
 #
 # WHY THIS REPORT EXISTS
 # ----------------------
-# wikidata-crawler ingests the full Wikidata JSON dump through a 14-step pipeline
-# (wikidata_crawler.py orchestrator, steps 101-114): download the ~90 GB .bz2 dump,
+# wikidata-crawler ingests the full Wikidata JSON dump through a 15-step pipeline
+# (wikidata_crawler.py orchestrator, steps 101-115): download the ~103 GB .bz2 dump,
 # three streaming passes over it (pass1 classification graph, pass2 entity rows +
 # statements, item_cache referenced items), then load the NDJSON staging into
 # MariaDB, bulk-load the target T_WC_WIKIDATA_* tables, resolve media, and clean up
-# old batches. The whole run takes SEVERAL DAYS. Philippe launched the current run
-# on 2026-07-26 ~13:00 (Paris).
+# old batches in the targets and then in staging. The whole run takes SEVERAL DAYS.
+# It is no longer launched by hand: run-if-new-dump.sh checks hourly and starts a run
+# only when Wikimedia publishes a new dump, which is roughly weekly.
 #
 # HOW PROGRESS IS READ (this is the unusual part)
 # -----------------------------------------------
@@ -21,9 +22,29 @@
 # plus overall strwikidatacrawlerstatus (RUNNING/SUCCESS/FAILURE), currentprocess,
 # startdatetime, enddatetime, totalruntime, lasterror. This report reads those with
 # the `pipeline` metric kind and renders a STEP TIMELINE: each step shows
-# done / running / pending / failed, its start→finish, and its duration. A step left
+# done / running / pending / failed, its start->finish, and its duration. A step left
 # RUNNING while the overall status is FAILURE is shown as failed, and a FAILURE
 # raises the page-top alert banner with the last error.
+#
+# WHAT CHANGED IN THE CRAWLER SINCE THIS REPORT WAS WRITTEN (2026-07-27)
+# ----------------------------------------------------------------------
+# Four things, all of them visible here now:
+#   * step 115 exists (2026-09-02). It prunes the PREVIOUS batch from the STG_*
+#     tables once the bulk load has succeeded, so staging ends a run holding exactly
+#     one batch instead of growing by 100M+ rows per run. The pipeline is therefore
+#     15 steps, not 14, and the denominator follows the manifest automatically.
+#   * step 106 rebuilds the V1 backfill seed first (WIKIDATA-CRAWLER-023,
+#     2026-09-19). It reads T_WC_WIKIDATA_ITEM_V1 and hands item_cache a second,
+#     separate input so the entities only V1 knows exist in V2 too. Step 107 writes
+#     the ventilation to strwikidatacrawlerv1backfill*, which the second metric below
+#     turns into a coverage bar.
+#   * steps 104 and 106 emit ALIASES_JSON (WIKIDATA-CRAWLER-025, 2026-09-20). The
+#     column is added to the live DB by apply_to_live_db.sql at the start of step
+#     108; the third metric below watches it land, from information_schema alone.
+#   * step 106 also emits CACHED_ENTITY_PROPERTIES (P31/P279/P345/P569/P570/P577,
+#     2026-08-17) and pass1's P279 graph is now loaded into T_WC_WIKIDATA_SUBCLASS
+#     (2026-08-16). Neither has its own marker; they are named here so a reader knows
+#     what steps 102 and 106 now cost and produce.
 #
 # CADENCE CAVEAT
 # --------------
@@ -34,43 +55,129 @@
 # this report is the archival daily view, not a live console.
 #
 # COST: one indexed LIKE 'strwikidatacrawler%' scan of the small T_WC_SERVER_VARIABLE
-# table. Trivial.
+# table, plus two more reads of that same small table and one information_schema
+# lookup. Trivial. Nothing here touches the 100M-row statement tables.
 
 slug: wikidata-etl-pipeline
-title: "Wikidata - dump ETL pipeline (14 steps)"
+title: "Wikidata - dump ETL pipeline (15 steps)"
 source_db: WIKIDATA
 description: >
   Step-by-step progress of the multi-day Wikidata dump ingestion (wikidata-crawler,
-  steps 101-114: download, pass1/pass2/item_cache, staging load, bulk load, media
-  resolution, cleanup). Read live from the crawler's T_WC_SERVER_VARIABLE step
-  markers and snapshotted daily. Run launched 2026-07-26 ~13:00 (Paris).
+  steps 101-115: download, pass1/pass2/item_cache, staging load, bulk load, media
+  resolution, target cleanup, staging cleanup). Read live from the crawler's
+  T_WC_SERVER_VARIABLE step markers and snapshotted daily. Launched automatically by
+  run-if-new-dump.sh when Wikimedia publishes a new dump.
 
 metrics:
   - key: wikidata_etl_pipeline
     kind: pipeline
     table: T_WC_SERVER_VARIABLE
     var_prefix: strwikidatacrawler
-    description: "Wikidata dump ETL - 14-step pipeline"
+    description: "Wikidata dump ETL - 15-step pipeline"
     long_desc: >
       Live step timeline read from the strwikidatacrawlerstep<code>{status,startedat,
       finishedat} server variables. The coverage bar and the daily trend are
-      steps-completed / 14. A step is 'pending' until the crawler reaches it, so early
-      in the run most steps are greyed out; they light up green as each finishes.
+      steps-completed / 15. A step is 'pending' until the crawler reaches it, so early
+      in the run most steps are greyed out; they light up green as each finishes. The
+      three dump-streaming passes (102, 104, 106) are the multi-day part: 20 to 33
+      hours each, item_cache measured at 22h45 on the 2026-08 run.
+    # Shown by the renderer ONLY when the run is over (SUCCESS and every step done).
+    # A verification that has to happen by hand needs a reminder at the one moment it
+    # is due, otherwise it is remembered a week later or not at all.
+    post_run: |
+      Re-run the WIKIDATA-CRAWLER-025 acceptance on vaugouindb. Read-only, a few minutes:
+      docker exec -i damp-vaugouin-com-mariadb-1 mariadb -uroot -p --force -t vaugouindb < doc/sql/wikidata-v2-025-acceptance.sql
+      Keep the output as doc/sql/wikidata-v2-025-acceptance-YYYYMMDD.txt in the wikidata-crawler repo, next to the baseline.
+      This is the "after" half of the ticket. The "before" was taken on 2026-09-20 (4 653 MB over the seven entity tables) and cannot be taken again.
+      Read F3 first: what decides whether ALIASES_JSON needs a language filter is the ratio MO_FR_EN / MO_TOTAL, not the alias count.
+      F4 has a ceiling of 87,9 %, not 100 %: 20 917 of the 172 179 PERSON_V1 rows with aliases have no row in V2 at all, which is entity coverage (-023), not an alias defect.
+      Then wikidata-run-report.sql for the general run check, and wikidata-v2-020-acceptance.sql if step 106 was replayed.
     steps:
       - {code: 101, label: "Resolve / download the .bz2 dump"}
-      - {code: 102, label: "Pass 1 - classification graph + core entity IDs"}
+      - {code: 102, label: "Pass 1 - classification graph + core entity IDs + P279 edges"}
       - {code: 103, label: "Validate pass 1 output"}
-      - {code: 104, label: "Pass 2 - entity rows + statements"}
+      - {code: 104, label: "Pass 2 - entity rows (labels + aliases) + statements"}
       - {code: 105, label: "Validate pass 2 output"}
-      - {code: 106, label: "Item-cache pass - referenced items"}
-      - {code: 107, label: "Validate item-cache output"}
-      - {code: 108, label: "Load NDJSON into staging tables"}
+      - {code: 106, label: "Item-cache pass - V1 backfill seed, referenced items, class claims"}
+      - {code: 107, label: "Validate item-cache output + V1 backfill ventilation"}
+      - {code: 108, label: "Apply live-DB DDL, then load NDJSON into staging tables"}
       - {code: 109, label: "Validate staging data"}
       - {code: 110, label: "Bulk-load target T_WC_WIKIDATA_* tables"}
       - {code: 111, label: "Validate target tables"}
       - {code: 112, label: "Resolve media resources"}
       - {code: 113, label: "Validate media resources"}
-      - {code: 114, label: "Cleanup old import batches"}
+      - {code: 114, label: "Cleanup old import batches (targets)"}
+      - {code: 115, label: "Cleanup old staging batches"}
+
+  # WIKIDATA-CRAWLER-023. What the V1 backfill seed actually managed to cache.
+  #
+  # THE DENOMINATOR IS NOT THE SEED. item_cache refuses to write a core entity into
+  # T_WC_WIKIDATA_ITEM, on purpose, so `skippedcore` can never be emitted and counting
+  # it in would cap this bar well below 100 % forever, which teaches the reader to
+  # ignore an amber bar. The reachable target is therefore seeded - skippedcore, and
+  # a success is emitted (cached as an item) OR diverted (routed to PERSON instead).
+  # What is left under 100 % is `missing`: Q-ids the SPARQL crawler recorded and that
+  # Wikidata has since deleted or merged. That residue is the only real loss.
+  - key: wikidata_v1_backfill
+    table: T_WC_SERVER_VARIABLE
+    warn_below: 90
+    description: "V1 backfill seed cached into V2 (step 106)"
+    long_desc: >
+      From the strwikidatacrawlerv1backfill* variables written by step 107. Done =
+      emitted + diverted, expected = seeded - skippedcore, so the bar measures what
+      the pass could reach, not what it was handed. The gap is `missing`, Q-ids gone
+      from Wikidata since a SPARQL crawler recorded them. 0/0 before the first run
+      that carries the seed; the bar is then blank, which is correct rather than red.
+    done_sql: >
+      SELECT COALESCE(SUM(CASE WHEN VAR_NAME IN ('strwikidatacrawlerv1backfillemitted',
+                                                 'strwikidatacrawlerv1backfilldiverted')
+                               THEN CAST(VAR_VALUE AS SIGNED) ELSE 0 END), 0)
+      FROM T_WC_SERVER_VARIABLE
+      WHERE VAR_NAME LIKE 'strwikidatacrawlerv1backfill%'
+    expected_sql: >
+      SELECT GREATEST(COALESCE(SUM(CASE
+                 WHEN VAR_NAME = 'strwikidatacrawlerv1backfillseeded'      THEN  CAST(VAR_VALUE AS SIGNED)
+                 WHEN VAR_NAME = 'strwikidatacrawlerv1backfillskippedcore' THEN -CAST(VAR_VALUE AS SIGNED)
+                 ELSE 0 END), 0), 0)
+      FROM T_WC_SERVER_VARIABLE
+      WHERE VAR_NAME LIKE 'strwikidatacrawlerv1backfill%'
+
+  # WIKIDATA-CRAWLER-025. Has the ALIASES_JSON column reached the live database?
+  #
+  # READS information_schema ONLY, and that is deliberate on two counts. It asks for
+  # an EXISTENCE, which is the one thing that catalogue answers reliably (its row
+  # COUNTS are estimates - see the wikidata-crawler AGENTS.md). And it never names
+  # ALIASES_JSON in a FROM clause, so it keeps working on the days before the column
+  # exists: a query that selected the column would fail to parse and take the whole
+  # report down with it.
+  #
+  # 0/14 until the run reaches step 108, where apply_to_live_db.sql adds the column to
+  # the 7 target and 7 staging entity tables. 14/14 afterwards, for good. A value
+  # stuck between the two means one table was created by hand from an older schema.
+  - key: wikidata_aliases_ddl
+    table: T_WC_WIKIDATA_PERSON
+    warn_below: 100
+    description: "ALIASES_JSON column in place (7 target + 7 staging)"
+    long_desc: >
+      Presence of the ALIASES_JSON column on the fourteen entity tables, from
+      information_schema. It is posted by apply_to_live_db.sql at the start of step
+      108 and again at step 110, never by hand. Until then 0/14 is the expected
+      reading, not an incident. Once it reads 14/14, the column exists but stays
+      empty until step 110 loads the batch; only the acceptance file measures the
+      fill.
+    done_sql: >
+      SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND COLUMN_NAME  = 'ALIASES_JSON'
+        AND TABLE_NAME IN ('T_WC_WIKIDATA_MOVIE', 'T_WC_WIKIDATA_SERIE',
+                           'T_WC_WIKIDATA_PERSON', 'T_WC_WIKIDATA_ITEM',
+                           'T_WC_WIKIDATA_SEASON', 'T_WC_WIKIDATA_EPISODE',
+                           'T_WC_WIKIDATA_CHARACTER',
+                           'STG_T_WC_WIKIDATA_MOVIE', 'STG_T_WC_WIKIDATA_SERIE',
+                           'STG_T_WC_WIKIDATA_PERSON', 'STG_T_WC_WIKIDATA_ITEM',
+                           'STG_T_WC_WIKIDATA_SEASON', 'STG_T_WC_WIKIDATA_EPISODE',
+                           'STG_T_WC_WIKIDATA_CHARACTER')
+    expected_sql: "SELECT 14"
 
 # --- optional, OFF by default ------------------------------------------------
 # Quantitative row counts for the DB-load stages (they only become non-zero once

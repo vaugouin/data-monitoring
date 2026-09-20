@@ -175,6 +175,12 @@ def run_report(conn, manifest, run_dt):
                 "runtime": vars_.get("totalruntime", (None,))[0],
                 "last_error": vars_.get("lasterror", (None,))[0] if overall_status == "FAILURE" else None,
                 "alert": overall_status == "FAILURE",
+                # `post_run` is a manifest note the renderer shows only once the run
+                # is really over, i.e. SUCCESS and every step accounted for. A run
+                # that succeeded with steps still pending (a --start-step resume)
+                # is not the moment to ask for an end-of-run verification.
+                "post_run": m.get("post_run"),
+                "complete": overall_status == "SUCCESS" and done == total,
             })
             continue
 
@@ -543,54 +549,152 @@ def _sample_tmdb_poster_invariants():
                   "2026-07-25 06:30 (SAMPLE)", "tmdb-poster-invariants-20260725.html")
 
 
+_WIKIDATA_STEP_LABELS = [
+    "Resolve / download the .bz2 dump",
+    "Pass 1 - classification graph + core entity IDs + P279 edges",
+    "Validate pass 1 output",
+    "Pass 2 - entity rows (labels + aliases) + statements",
+    "Validate pass 2 output",
+    "Item-cache pass - V1 backfill seed, referenced items, class claims",
+    "Validate item-cache output + V1 backfill ventilation",
+    "Apply live-DB DDL, then load NDJSON into staging tables",
+    "Validate staging data",
+    "Bulk-load target T_WC_WIKIDATA_* tables",
+    "Validate target tables",
+    "Resolve media resources",
+    "Validate media resources",
+    "Cleanup old import batches (targets)",
+    "Cleanup old staging batches",
+]
+_WIKIDATA_STEPS = len(_WIKIDATA_STEP_LABELS)
+
+# The end-of-run reminder, kept in step with reports/wikidata-etl-pipeline.yaml so the
+# sample previews what the real page will print.
+_WIKIDATA_POST_RUN = (
+    "Re-run the WIKIDATA-CRAWLER-025 acceptance on vaugouindb. Read-only, a few minutes:\n"
+    "docker exec -i damp-vaugouin-com-mariadb-1 mariadb -uroot -p --force -t vaugouindb < doc/sql/wikidata-v2-025-acceptance.sql\n"
+    "Keep the output as doc/sql/wikidata-v2-025-acceptance-YYYYMMDD.txt in the "
+    "wikidata-crawler repo, next to the baseline.\n"
+    "Read F3 first: what decides whether ALIASES_JSON needs a language filter is the "
+    "ratio MO_FR_EN / MO_TOTAL, not the alias count."
+)
+
+
+def _wikidata_steps(states, times):
+    steps = []
+    for i, (label, state) in enumerate(zip(_WIKIDATA_STEP_LABELS, states)):
+        code = 101 + i
+        started, finished, dur = times.get(code, (None, None, None))
+        steps.append({"code": code, "label": label, "state": state,
+                      "started": started, "finished": finished, "duration": dur})
+    return steps
+
+
 def _sample_wikidata_pipeline():
     """Seeded preview of the wikidata-etl-pipeline report.
 
     A mid-run snapshot: download + pass1 done, pass2 running, the rest pending - so
-    the timeline shows all four step states at once. Overall RUNNING.
+    the timeline shows all four step states at once. Overall RUNNING, which is also
+    the state in which the end-of-run reminder must stay HIDDEN.
     """
     report = {
         "slug": "wikidata-etl-pipeline",
-        "title": "Wikidata - dump ETL pipeline (14 steps)",
+        "title": "Wikidata - dump ETL pipeline (15 steps)",
         "description": ("Step-by-step progress of the multi-day Wikidata dump ingestion. SAMPLE DATA - "
                         "a mid-run snapshot (pass 2 in progress)."),
     }
-    labels = [
-        "Resolve / download the .bz2 dump", "Pass 1 - classification graph + core entity IDs",
-        "Validate pass 1 output", "Pass 2 - entity rows + statements", "Validate pass 2 output",
-        "Item-cache pass - referenced items", "Validate item-cache output",
-        "Load NDJSON into staging tables", "Validate staging data",
-        "Bulk-load target T_WC_WIKIDATA_* tables", "Validate target tables",
-        "Resolve media resources", "Validate media resources", "Cleanup old import batches",
-    ]
-    # states for the 14 steps: 101 download done, 102-103 pass1 done, 104 running, rest pending
-    states = ["done", "done", "done", "running"] + ["pending"] * 10
+    states = ["done", "done", "done", "running"] + ["pending"] * (_WIKIDATA_STEPS - 4)
     times = {
         101: ("2026-07-26 13:02", "2026-07-26 18:41", "5h39m"),
         102: ("2026-07-26 18:41", "2026-07-26 23:07", "4h26m"),
         103: ("2026-07-26 23:07", "2026-07-26 23:09", "2m"),
         104: ("2026-07-26 23:09", None, "7h30m"),
     }
-    steps = []
-    for i, (label, state) in enumerate(zip(labels, states), start=0):
-        code = 101 + i
-        started, finished, dur = times.get(code, (None, None, None))
-        steps.append({"code": code, "label": label, "state": state,
-                      "started": started, "finished": finished, "duration": dur})
+    steps = _wikidata_steps(states, times)
     done = sum(1 for s in steps if s["state"] == "done")
-    base = datetime.date(2026, 7, 26)
-    trend = [(str(base), round(100.0 * done / 14, 2))]
+    pct = round(100.0 * done / _WIKIDATA_STEPS, 2)
     results = [{
-        "key": "wikidata_etl_pipeline", "description": "Wikidata dump ETL - 14-step pipeline",
+        "key": "wikidata_etl_pipeline",
+        "description": f"Wikidata dump ETL - {_WIKIDATA_STEPS}-step pipeline",
         "long_desc": "Live step timeline read from the crawler's server variables; the bar and daily "
-                     "trend are steps-completed / 14.",
-        "kind": "pipeline", "done": done, "expected": 14, "pct": round(100.0 * done / 14, 2),
-        "trend": trend, "trend_kind": "pct", "steps": steps, "overall_status": "RUNNING",
+                     f"trend are steps-completed / {_WIKIDATA_STEPS}.",
+        "kind": "pipeline", "done": done, "expected": _WIKIDATA_STEPS, "pct": pct,
+        "trend": [(str(datetime.date(2026, 7, 26)), pct)],
+        "trend_kind": "pct", "steps": steps, "overall_status": "RUNNING",
         "current_process": "104: run ETL pass2", "started_at": "2026-07-26 13:02:11",
         "ended_at": None, "runtime": "RUNNING", "last_error": None, "alert": False,
+        "post_run": _WIKIDATA_POST_RUN, "complete": False,
     }]
     _write_sample("wikidata-etl-pipeline", report, results,
                   "2026-07-27 06:30 (SAMPLE)", "wikidata-etl-pipeline-20260727.html")
+
+
+def _sample_wikidata_pipeline_complete():
+    """Seeded preview of the SAME report the morning after a run finished.
+
+    This is the state the end-of-run reminder exists for, and the only one in which
+    it renders: overall SUCCESS with all 15 steps done. It also previews the two
+    metrics added with the -023 seed and the -025 aliases column.
+    """
+    report = {
+        "slug": "wikidata-etl-pipeline-complete",
+        "title": "Wikidata - dump ETL pipeline (15 steps, run finished)",
+        "description": ("The same report the morning after a run completed. SAMPLE DATA - shows the "
+                        "end-of-run reminder, hidden while the pipeline is still running."),
+    }
+    states = ["done"] * _WIKIDATA_STEPS
+    times = {
+        101: ("2026-09-25 03:17", "2026-09-25 10:49", "7h32m"),
+        102: ("2026-09-25 10:49", "2026-09-26 09:02", "22h13m"),
+        103: ("2026-09-26 09:02", "2026-09-26 09:04", "2m"),
+        104: ("2026-09-26 09:04", "2026-09-27 17:31", "32h27m"),
+        105: ("2026-09-27 17:31", "2026-09-27 17:33", "2m"),
+        106: ("2026-09-27 17:33", "2026-09-28 16:18", "22h45m"),
+        107: ("2026-09-28 16:18", "2026-09-28 16:20", "2m"),
+        108: ("2026-09-28 16:20", "2026-09-29 05:44", "13h24m"),
+        109: ("2026-09-29 05:44", "2026-09-29 05:47", "3m"),
+        110: ("2026-09-29 05:47", "2026-09-29 14:02", "8h15m"),
+        111: ("2026-09-29 14:02", "2026-09-29 14:05", "3m"),
+        112: ("2026-09-29 14:05", "2026-09-29 14:39", "34m"),
+        113: ("2026-09-29 14:39", "2026-09-29 14:40", "1m"),
+        114: ("2026-09-29 14:40", "2026-09-29 15:28", "48m"),
+        115: ("2026-09-29 15:28", "2026-09-29 16:11", "43m"),
+    }
+    steps = _wikidata_steps(states, times)
+    results = [
+        {
+            "key": "wikidata_etl_pipeline",
+            "description": f"Wikidata dump ETL - {_WIKIDATA_STEPS}-step pipeline",
+            "long_desc": "Live step timeline read from the crawler's server variables; the bar and "
+                         f"daily trend are steps-completed / {_WIKIDATA_STEPS}.",
+            "kind": "pipeline", "done": _WIKIDATA_STEPS, "expected": _WIKIDATA_STEPS, "pct": 100.0,
+            "trend": [("2026-09-27", 33.33), ("2026-09-28", 46.67), ("2026-09-29", 100.0)],
+            "trend_kind": "pct", "steps": steps, "overall_status": "SUCCESS",
+            "current_process": None, "started_at": "2026-09-25 03:17:04",
+            "ended_at": "2026-09-29 16:11:52", "runtime": "4 days, 12 hours",
+            "last_error": None, "alert": False,
+            "post_run": _WIKIDATA_POST_RUN, "complete": True,
+        },
+        {
+            "key": "wikidata_v1_backfill", "description": "V1 backfill seed cached into V2 (step 106)",
+            "long_desc": "Done = emitted + diverted, expected = seeded - skippedcore. The gap is "
+                         "missing: Q-ids gone from Wikidata since a SPARQL crawler recorded them.",
+            "kind": "coverage", "done": 610284, "expected": 615204, "pct": 99.2,
+            "warn_below": 90, "trend": [("2026-09-29", 99.2)], "trend_kind": "pct",
+            "daily_rate": None, "rate_label": None,
+        },
+        {
+            "key": "wikidata_aliases_ddl",
+            "description": "ALIASES_JSON column in place (7 target + 7 staging)",
+            "long_desc": "Presence of the column on the fourteen entity tables, from "
+                         "information_schema. Posted by apply_to_live_db.sql at step 108.",
+            "kind": "coverage", "done": 14, "expected": 14, "pct": 100.0,
+            "warn_below": 100, "trend": [("2026-09-28", 0.0), ("2026-09-29", 100.0)],
+            "trend_kind": "pct", "daily_rate": None, "rate_label": None,
+        },
+    ]
+    _write_sample("wikidata-etl-pipeline-complete", report, results,
+                  "2026-09-30 06:30 (SAMPLE)", "wikidata-etl-pipeline-complete-20260930.html")
 
 
 def _sample_tmdb_release_dates():
@@ -726,6 +830,7 @@ def _sample():
     _sample_tmdb_company_wikidata()
     _sample_tmdb_poster_invariants()
     _sample_wikidata_pipeline()
+    _sample_wikidata_pipeline_complete()
     _sample_tmdb_release_dates()
     _sample_tmdb_watch_providers()
 

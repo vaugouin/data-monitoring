@@ -25,7 +25,12 @@ liveness.
 - A metric may set `kind: pipeline` to track a multi-step batch job: it reads one
   `T_WC_SERVER_VARIABLE` row per step (written by the job's orchestrator) and renders a
   step timeline (done / running / pending / failed, with per-step durations). No SQL;
-  configure `var_prefix` and a `steps:` list of `{code, label}`.
+  configure `var_prefix` and a `steps:` list of `{code, label}`. The number of steps is
+  the length of that list, so adding a step to the job is a one-line manifest edit.
+  A `pipeline` metric may also carry `post_run:`, free text shown **only once the run is
+  over** (overall `SUCCESS` and every step done): the end-of-run checks a human still has
+  to do by hand. It is deliberately not an alert banner, because a to-do is not a
+  breached invariant and mixing the two teaches you to ignore both.
 - `data-monitoring.py` runs the SQL, upserts one row per metric per day into
   `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders `<slug>-YYYYMMDD.html`
   (+ `index-YYYYMMDD.html` and `index-latest.html`) into `OUTPUT_DIR`, and prunes
@@ -261,8 +266,10 @@ percentage - the sparkline is the raw count history and should be a flat line on
 ### `wikidata-etl-pipeline`
 
 Step-by-step progress of the **multi-day** Wikidata dump ingestion (`wikidata-crawler`,
-steps 101-114: download the ~90 GB `.bz2`, three streaming passes - pass1 / pass2 /
-item_cache - then staging load, target bulk-load, media resolution, cleanup). The early
+steps 101-115: download the ~103 GB `.bz2`, three streaming passes - pass1 / pass2 /
+item_cache - then staging load, target bulk-load, media resolution, target cleanup and
+staging cleanup). No longer launched by hand: `run-if-new-dump.sh` checks hourly and
+starts a run only when Wikimedia publishes a new dump, so expect one run a week. The early
 passes write **files** on `/shared`, invisible to a MariaDB query, but the orchestrator
 also writes one `T_WC_SERVER_VARIABLE` row per step
 (`strwikidatacrawlerstep<code>{status,startedat,finishedat}`). This report uses the
@@ -271,7 +278,29 @@ done / running / pending / failed with its start→finish and duration, an overa
 status/current-step header, a steps-completed bar, and a daily completion trend. A failed
 run raises the page-top alert banner with the last error.
 
+Two metrics sit beside the timeline, both reading small tables only:
+
+- **V1 backfill seed cached into V2** (`WIKIDATA-CRAWLER-023`, step 106). Built from the
+  `strwikidatacrawlerv1backfill*` variables written by step 107. Done is `emitted +
+  diverted`, expected is `seeded - skippedcore`, not the raw seed: `item_cache` refuses
+  by design to write a core entity into `T_WC_WIKIDATA_ITEM`, so counting those in would
+  cap the bar below 100 % forever. What remains under 100 % is `missing`, Q-ids Wikidata
+  has deleted or merged since a SPARQL crawler recorded them, and that is the only real
+  loss.
+- **`ALIASES_JSON` column in place** (`WIKIDATA-CRAWLER-025`). Reads `information_schema`
+  alone, for two reasons: it asks for an *existence*, the one thing that catalogue
+  answers reliably, and it never names the column in a `FROM`, so the report keeps
+  working on the days before the column exists. Reads 0/14 until step 108 applies
+  `apply_to_live_db.sql`, then 14/14 for good.
+
+Once a run finishes, the card prints an end-of-run reminder (the manifest's `post_run`):
+re-run `doc/sql/wikidata-v2-025-acceptance.sql` in the `wikidata-crawler` repo and keep
+its output next to the 2026-09-20 baseline. That verification is read-only and manual,
+and the morning after the run is the one moment it is due.
+
 Cadence note: data-monitoring runs once a day (~06:30), so this is a daily **checkpoint**
 of a days-long job, not a live console - for real-time step status use tmdb-front's
 `srvvar.php`, which reads the same server variables live. Cost is one indexed
-`LIKE 'strwikidatacrawler%'` scan of the small `T_WC_SERVER_VARIABLE` table.
+`LIKE 'strwikidatacrawler%'` scan of the small `T_WC_SERVER_VARIABLE` table, two more
+reads of that same table, and one `information_schema` lookup. Nothing touches the
+100M-row statement tables.

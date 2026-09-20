@@ -157,6 +157,21 @@ def _pipeline_card(m):
         meta_bits.append("started " + html.escape(str(m["started_at"])))
     err = (f'<div class="step-err">last error: {html.escape(str(m["last_error"]))}</div>'
            if m.get("last_error") else "")
+
+    # The manifest's `post_run` note: what a human still has to do once the whole
+    # run is over. Shown only when it IS over, otherwise it is noise for the three
+    # days the pipeline is running. Deliberately not an alert banner: a to-do is
+    # not a breached invariant, and mixing the two would teach us to ignore both.
+    todo = ""
+    if m.get("post_run") and m.get("complete"):
+        when = f' on {html.escape(str(m["ended_at"]))}' if m.get("ended_at") else ""
+        body = "<br>".join(
+            html.escape(line.strip())
+            for line in str(m["post_run"]).strip().splitlines() if line.strip()
+        )
+        todo = (f'<div class="step-todo">'
+               f'<span class="todo-title">Run finished{when}. Still to do:</span>'
+               f'<div class="todo-body">{body}</div></div>')
     return f"""
     <section class="card card-pipeline{' card-alert' if m.get('alert') else ''}">
       <div class="card-head">
@@ -166,6 +181,7 @@ def _pipeline_card(m):
       <div class="pipeline-meta">{' &nbsp;·&nbsp; '.join(meta_bits)}</div>
       {_coverage_bar(m.get('pct'), 0)}
       {err}
+      {todo}
       <ol class="steps">{''.join(rows)}</ol>
       <p class="long-desc">{html.escape(m.get('long_desc') or '')}</p>
     </section>"""
@@ -323,6 +339,12 @@ def render_report(report, metrics, generated_at, db_label, nav=None):
   .step-pending {{ opacity: .55; }}
   .step-failed .step-label {{ font-weight: 600; color: #d9534f; }}
   .step-err {{ font-size: 12px; color: #7f231f; margin: 6px 0; }}
+  .step-todo {{ margin: 12px 0 2px; padding: 12px 14px; background: #fff8e1;
+                border: 1px solid #ffb300; border-left: 6px solid #ffb300;
+                border-radius: 6px; color: #6d4c00; }}
+  .step-todo .todo-title {{ display: block; font-size: 14px; font-weight: 700;
+                            margin-bottom: 6px; }}
+  .step-todo .todo-body {{ font-size: 13px; line-height: 1.55; }}
   .day-nav {{ display: flex; align-items: center; justify-content: space-between;
               gap: 12px; padding: 10px 28px; background: #eceff1;
               border-bottom: 1px solid #cfd8dc; flex-wrap: wrap; }}

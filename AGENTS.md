@@ -30,7 +30,13 @@ process liveness**. This repo tracks **campaign trend + completion + ETA** inste
    card and `render._alert_banner` raises a page-top banner when the count is > 0. A third
    kind, `pipeline`, tracks a multi-step batch job: it reads per-step
    `T_WC_SERVER_VARIABLE` markers (`var_prefix` + a `steps:` list of `{code,label}`), no
-   SQL, and `render._pipeline_card` draws a step timeline. A new campaign or guard is a
+   SQL, and `render._pipeline_card` draws a step timeline. Its step count is
+   `len(steps)`, never a literal, so adding a step to the tracked job is a manifest
+   edit and nothing else. A `pipeline` metric may also carry `post_run:`, free text
+   the card prints **only when the run is over** (`SUCCESS` and every step done,
+   computed as `complete` in the runner): the manual end-of-run checks. Not an alert
+   banner on purpose, a to-do is not a breached invariant, and mixing the two teaches
+   us to ignore both. A new campaign or guard is a
    **new manifest file, not new code** - the design is source-agnostic.
 2. `data-monitoring.py` runs the SQL, upserts one row per metric per day into
    `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders a self-contained HTML
@@ -81,13 +87,25 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
   **freshness** reports, not gathering-completeness ones. Details and caveats live in
   the manifest headers; a summary is in @README.md.
 - `wikidata-etl-pipeline` - step timeline for the multi-day Wikidata dump ingestion
-  (`wikidata-crawler`, steps 101-114). Uses the `kind: pipeline` metric type: it reads the
+  (`wikidata-crawler`, steps 101-**115**). Uses the `kind: pipeline` metric type: it reads the
   orchestrator's per-step `T_WC_SERVER_VARIABLE` markers
   (`strwikidatacrawlerstep<code>{status,startedat,finishedat}`) rather than SQL, because
   the early passes produce files on `/shared`, not DB rows. Renders each step as
-  done/running/pending/failed with durations; snapshot stores steps-done/14 for a daily
+  done/running/pending/failed with durations; snapshot stores steps-done/15 for a daily
   trend; a run FAILURE hits the alert banner. Deliberately a daily checkpoint, not a live
-  console (that is srvvar.php). This is the first use of the `pipeline` kind.
+  console (that is srvvar.php). This is the first use of the `pipeline` kind, and since 2026-09-20
+  the first use of `post_run`.
+  **Kept in step with the crawler** (last synced 2026-09-20): step 115 prunes the
+  previous batch from staging; step 106 rebuilds the V1 backfill seed before the pass
+  (`WIKIDATA-CRAWLER-023`); steps 104/106 emit `ALIASES_JSON` (`-025`). Two coverage
+  metrics came with them, both on small tables: `wikidata_v1_backfill` (from the
+  `strwikidatacrawlerv1backfill*` variables, with `seeded - skippedcore` as the
+  denominator, because `item_cache` refuses by design to write a core entity into
+  `ITEM` and counting those in would cap the bar below 100 % forever) and
+  `wikidata_aliases_ddl` (`information_schema` only, so it survives the days before
+  the column exists: a query naming `ALIASES_JSON` in a `FROM` would fail to parse
+  and take the whole report down). When the crawler gains a step or a marker, this
+  manifest is what has to follow.
 - `tmdb-poster-invariants` - regression guard (NOT a backfill): French posters must never
   sit at `DISPLAY_ORDER 0` (reserved for the en/'' canonical) after TMDB-CRAWLER-024/025/026.
   Two `kind: alert_zero` metrics count FR posters at 0 in `T_WC_TMDB_{MOVIE,SERIE}_IMAGE`;

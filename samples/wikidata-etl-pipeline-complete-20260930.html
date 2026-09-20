@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wikidata - dump ETL pipeline (15 steps, run finished) - 2026-09-30 06:30 (SAMPLE)</title>
+<style>
+  :root { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  body { margin: 0; background: #f5f7f9; color: #263238; }
+  header { background: #263238; color: #fff; padding: 20px 28px; }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header .meta { font-size: 12px; color: #b0bec5; }
+  .intro { padding: 16px 28px; font-size: 14px; color: #455a64; max-width: 70ch; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+           gap: 16px; padding: 0 28px 28px; }
+  .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .card-head h3 { margin: 0; font-size: 15px; }
+  .metric-key { font-size: 11px; color: #90a4ae; font-family: ui-monospace, monospace; }
+  .pct { font-size: 30px; font-weight: 700; margin: 8px 0 4px; }
+  .bar { display: block; }
+  .counts { font-size: 13px; color: #455a64; margin: 8px 0; }
+  .trend { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .trend-label { font-size: 11px; color: #90a4ae; }
+  .long-desc { font-size: 12px; color: #607d8b; margin: 8px 0 0; line-height: 1.4; }
+  .muted { color: #90a4ae; font-size: 11px; }
+  .status { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+  .card-alert { border: 2px solid #d9534f; box-shadow: 0 0 0 3px rgba(217,83,79,.12); }
+  .alert-banner { margin: 16px 28px; padding: 14px 18px; background: #fdecea;
+                   border: 1px solid #d9534f; border-left: 6px solid #d9534f; border-radius: 6px;
+                   color: #7f231f; }
+  .alert-banner .alert-title { font-size: 15px; font-weight: 700; }
+  .alert-banner ul { margin: 8px 0; padding-left: 20px; font-size: 13px; }
+  .alert-banner .alert-note { font-size: 12px; color: #a4433f; }
+  .card-pipeline { grid-column: 1 / -1; }
+  .pipeline-meta { font-size: 13px; color: #455a64; margin: 4px 0 10px; }
+  .steps { list-style: none; margin: 10px 0 0; padding: 0; }
+  .step { display: flex; align-items: baseline; gap: 10px; padding: 5px 6px;
+           border-bottom: 1px solid #eceff1; font-size: 13px; }
+  .step-icon { font-weight: 700; width: 14px; text-align: center; flex: none; }
+  .step-code { color: #90a4ae; font-family: ui-monospace, monospace; font-size: 11px;
+                width: 26px; flex: none; }
+  .step-label { flex: 1 1 auto; }
+  .step-timing { color: #607d8b; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .step-dur { color: #90a4ae; font-size: 11px; min-width: 52px; text-align: right; }
+  .step-running .step-label { font-weight: 600; color: #1976d2; }
+  .step-pending { opacity: .55; }
+  .step-failed .step-label { font-weight: 600; color: #d9534f; }
+  .step-err { font-size: 12px; color: #7f231f; margin: 6px 0; }
+  .step-todo { margin: 12px 0 2px; padding: 12px 14px; background: #fff8e1;
+                border: 1px solid #ffb300; border-left: 6px solid #ffb300;
+                border-radius: 6px; color: #6d4c00; }
+  .step-todo .todo-title { display: block; font-size: 14px; font-weight: 700;
+                            margin-bottom: 6px; }
+  .step-todo .todo-body { font-size: 13px; line-height: 1.55; }
+  .day-nav { display: flex; align-items: center; justify-content: space-between;
+              gap: 12px; padding: 10px 28px; background: #eceff1;
+              border-bottom: 1px solid #cfd8dc; flex-wrap: wrap; }
+  .day-nav-days { display: flex; align-items: center; gap: 14px; font-size: 13px; }
+  .nav-link { color: #1976d2; text-decoration: none; font-weight: 600;
+               font-variant-numeric: tabular-nums; }
+  .nav-link:hover { text-decoration: underline; }
+  .nav-disabled { color: #b0bec5; font-weight: 400; cursor: not-allowed; }
+  .nav-today { color: #263238; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .nav-index { font-size: 12px; color: #607d8b; text-decoration: none; }
+  .nav-index:hover { text-decoration: underline; }
+  footer { padding: 16px 28px; font-size: 11px; color: #90a4ae; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Wikidata - dump ETL pipeline (15 steps, run finished)</h1>
+  <div class="meta">Generated 2026-09-30 06:30 (SAMPLE) · sample / no DB · report slug <code>wikidata-etl-pipeline-complete</code></div>
+</header>
+<nav class="day-nav"><div class="day-nav-days"><a class="nav-link" href="wikidata-etl-pipeline-complete-20260929.html">◀ 2026-09-29</a><span class="nav-today">2026-09-30</span><a class="nav-link" href="wikidata-etl-pipeline-complete-20261001.html">2026-10-01 ▶</a></div><a class="nav-index" href="index-latest.html">all reports</a></nav>
+<div class="intro">The same report the morning after a run completed. SAMPLE DATA - shows the end-of-run reminder, hidden while the pipeline is still running.</div>
+
+<div class="grid">
+
+    <section class="card card-pipeline">
+      <div class="card-head">
+        <h3>Wikidata dump ETL - 15-step pipeline</h3>
+        <span class="metric-key">wikidata_etl_pipeline</span>
+      </div>
+      <div class="pipeline-meta"><strong style="color:#5cb85c">SUCCESS</strong> &nbsp;·&nbsp; 15/15 steps done &nbsp;·&nbsp; runtime: 4 days, 12 hours &nbsp;·&nbsp; started 2026-09-25 03:17:04</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="100.00" height="22" rx="3" fill="#5cb85c"/><line x1="0" y1="0" x2="0" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      
+      <div class="step-todo"><span class="todo-title">Run finished on 2026-09-29 16:11:52. Still to do:</span><div class="todo-body">Re-run the WIKIDATA-CRAWLER-025 acceptance on vaugouindb. Read-only, a few minutes:<br>docker exec -i damp-vaugouin-com-mariadb-1 mariadb -uroot -p --force -t vaugouindb &lt; doc/sql/wikidata-v2-025-acceptance.sql<br>Keep the output as doc/sql/wikidata-v2-025-acceptance-YYYYMMDD.txt in the wikidata-crawler repo, next to the baseline.<br>Read F3 first: what decides whether ALIASES_JSON needs a language filter is the ratio MO_FR_EN / MO_TOTAL, not the alias count.</div></div>
+      <ol class="steps"><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">101</span><span class="step-label">Resolve / download the .bz2 dump</span><span class="step-timing">03:17 → 10:49</span><span class="step-dur">7h32m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">102</span><span class="step-label">Pass 1 - classification graph + core entity IDs + P279 edges</span><span class="step-timing">10:49 → 09:02</span><span class="step-dur">22h13m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">103</span><span class="step-label">Validate pass 1 output</span><span class="step-timing">09:02 → 09:04</span><span class="step-dur">2m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">104</span><span class="step-label">Pass 2 - entity rows (labels + aliases) + statements</span><span class="step-timing">09:04 → 17:31</span><span class="step-dur">32h27m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">105</span><span class="step-label">Validate pass 2 output</span><span class="step-timing">17:31 → 17:33</span><span class="step-dur">2m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">106</span><span class="step-label">Item-cache pass - V1 backfill seed, referenced items, class claims</span><span class="step-timing">17:33 → 16:18</span><span class="step-dur">22h45m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">107</span><span class="step-label">Validate item-cache output + V1 backfill ventilation</span><span class="step-timing">16:18 → 16:20</span><span class="step-dur">2m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">108</span><span class="step-label">Apply live-DB DDL, then load NDJSON into staging tables</span><span class="step-timing">16:20 → 05:44</span><span class="step-dur">13h24m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">109</span><span class="step-label">Validate staging data</span><span class="step-timing">05:44 → 05:47</span><span class="step-dur">3m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">110</span><span class="step-label">Bulk-load target T_WC_WIKIDATA_* tables</span><span class="step-timing">05:47 → 14:02</span><span class="step-dur">8h15m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">111</span><span class="step-label">Validate target tables</span><span class="step-timing">14:02 → 14:05</span><span class="step-dur">3m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">112</span><span class="step-label">Resolve media resources</span><span class="step-timing">14:05 → 14:39</span><span class="step-dur">34m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">113</span><span class="step-label">Validate media resources</span><span class="step-timing">14:39 → 14:40</span><span class="step-dur">1m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">114</span><span class="step-label">Cleanup old import batches (targets)</span><span class="step-timing">14:40 → 15:28</span><span class="step-dur">48m</span></li><li class="step step-done"><span class="step-icon" style="color:#5cb85c">✓</span><span class="step-code">115</span><span class="step-label">Cleanup old staging batches</span><span class="step-timing">15:28 → 16:11</span><span class="step-dur">43m</span></li></ol>
+      <p class="long-desc">Live step timeline read from the crawler&#x27;s server variables; the bar and daily trend are steps-completed / 15.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>V1 backfill seed cached into V2 (step 106)</h3>
+        <span class="metric-key">wikidata_v1_backfill</span>
+      </div>
+      <div class="pct">99.2%</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="99.20" height="22" rx="3" fill="#5cb85c"/><line x1="90" y1="0" x2="90" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      <div class="counts">
+        <strong>610 284</strong> done
+        / 615 204 expected
+      </div>
+      <div class="trend">
+        <span class="muted">trend builds up over time</span>
+        <span class="trend-label">completion % history</span>
+      </div>
+      <p class="long-desc">Done = emitted + diverted, expected = seeded - skippedcore. The gap is missing: Q-ids gone from Wikidata since a SPARQL crawler recorded them.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>ALIASES_JSON column in place (7 target + 7 staging)</h3>
+        <span class="metric-key">wikidata_aliases_ddl</span>
+      </div>
+      <div class="pct">100.0%</div>
+      <svg class="bar" width="100%" height="22" preserveAspectRatio="none" viewBox="0 0 100 22"><rect x="0" y="0" width="100" height="22" rx="3" fill="#eceff1"/><rect x="0" y="0" width="100.00" height="22" rx="3" fill="#5cb85c"/><line x1="100" y1="0" x2="100" y2="22" stroke="#607d8b" stroke-width="0.4" stroke-dasharray="1.5"/></svg>
+      <div class="counts">
+        <strong>14</strong> done
+        / 14 expected
+      </div>
+      <div class="trend">
+        <svg class="spark" width="220" height="40" viewBox="0 0 220 40"><polyline fill="none" stroke="#5cb85c" stroke-width="1.5" points="0.0,40.0 220.0,0.0"/></svg>
+        <span class="trend-label">completion % history</span>
+      </div>
+      <p class="long-desc">Presence of the column on the fourteen entity tables, from information_schema. Posted by apply_to_live_db.sql at step 108.</p>
+    </section>
+</div>
+<footer>
+  data-monitoring · read-only snapshot · history in <code>T_WC_DATA_MONITORING_SNAPSHOT</code>.
+  Percentages are an upper bound on what upstream exposes; a NULL/zero usually means the
+  source has no value, not a crawler miss. ETA is an interpretation, not a commitment.
+</footer>
+</body>
+</html>
