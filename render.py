@@ -133,9 +133,13 @@ def _pipeline_card(m):
         icon, color = _STEP_STYLE.get(st["state"], _STEP_STYLE["pending"])
         timing = ""
         if st.get("started"):
-            timing = html.escape(st["started"][11:16])  # HH:MM
+            # A run spans several days, so a bare HH:MM is ambiguous: always give
+            # the start day (MM-DD), and the end day only when it differs.
+            timing = html.escape(st["started"][5:16])  # MM-DD HH:MM
             if st.get("finished"):
-                timing += " → " + html.escape(st["finished"][11:16])
+                same_day = st["finished"][:10] == st["started"][:10]
+                timing += " → " + html.escape(st["finished"][11:16] if same_day
+                                              else st["finished"][5:16])
             elif st["state"] == "running":
                 timing += " → …"
         dur = f'<span class="step-dur">{html.escape(st["duration"])}</span>' if st.get("duration") else ""
@@ -151,10 +155,16 @@ def _pipeline_card(m):
                  f'{done}/{total} steps done']
     if m.get("current_process"):
         meta_bits.append("current: " + html.escape(m["current_process"]))
-    if m.get("runtime"):
-        meta_bits.append("runtime: " + html.escape(str(m["runtime"])))
+    # All times on this card are Paris time (the crawler writes its markers so).
     if m.get("started_at"):
-        meta_bits.append("started " + html.escape(str(m["started_at"])))
+        meta_bits.append("started " + html.escape(str(m["started_at"])[:16]))
+    if m.get("ended_at"):
+        meta_bits.append("ended " + html.escape(str(m["ended_at"])[:16]))
+    if m.get("elapsed"):
+        meta_bits.append(f'<strong>running for {html.escape(m["elapsed"])}</strong>')
+    if m.get("total_time"):
+        meta_bits.append(f'<strong>total {html.escape(m["total_time"])}</strong>')
+    meta_bits.append('<span class="muted">Paris time</span>')
     err = (f'<div class="step-err">last error: {html.escape(str(m["last_error"]))}</div>'
            if m.get("last_error") else "")
 
@@ -334,7 +344,7 @@ def render_report(report, metrics, generated_at, db_label, nav=None):
                 width: 26px; flex: none; }}
   .step-label {{ flex: 1 1 auto; }}
   .step-timing {{ color: #607d8b; font-size: 12px; font-variant-numeric: tabular-nums; }}
-  .step-dur {{ color: #90a4ae; font-size: 11px; min-width: 52px; text-align: right; }}
+  .step-dur {{ color: #90a4ae; font-size: 11px; min-width: 68px; text-align: right; }}
   .step-running .step-label {{ font-weight: 600; color: #1976d2; }}
   .step-pending {{ opacity: .55; }}
   .step-failed .step-label {{ font-weight: 600; color: #d9534f; }}

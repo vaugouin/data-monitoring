@@ -78,8 +78,11 @@ def _fmt_duration(seconds):
     if seconds is None or seconds < 0:
         return None
     seconds = int(seconds)
-    h, rem = divmod(seconds, 3600)
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
     m, s = divmod(rem, 60)
+    if d:
+        return f"{d}d{h:02d}h{m:02d}m"
     if h:
         return f"{h}h{m:02d}m"
     if m:
@@ -109,6 +112,10 @@ def _build_pipeline(vars_, steps, run_dt, overall_status):
             state = "failed" if overall_status == "FAILURE" else "running"
         else:
             state = "pending"
+        # A step that is running (or died running) has no end yet: a finishedat
+        # present at that point is left over from the previous run, not this one.
+        if state in ("running", "failed"):
+            finished = None
         if finished and started:
             duration = _fmt_duration((finished - started).total_seconds())
         elif state == "running" and started:
@@ -122,6 +129,55 @@ def _build_pipeline(vars_, steps, run_dt, overall_status):
             "duration": duration,
         })
     return out, done
+
+
+def _run_window(vars_, steplist, run_dt, overall_status):
+    """Start, end and length of the current run, in Paris time.
+
+    Returns (started, ended, elapsed, total): started/ended as 'YYYY-MM-DD HH:MM:SS'
+    strings or None, elapsed (run still going, now - start) and total (run over,
+    end - start) as durations, exactly one of the two set once the start is known.
+
+    The run-level startdatetime / enddatetime are trusted only when they are local
+    time. Until 2026-09-27 each dump pass of wikidata_dump_etl.py overwrote them
+    with its OWN start and end, in UTC ('... UTC' suffix): the header then showed
+    step 106's start as the run's. Such a value is rebuilt from the step markers
+    instead: the run starts when its first step (`startstep`) started, or when
+    step 101 did if a resume replayed it just before; it ends at the last finish.
+    """
+    now = run_dt.replace(tzinfo=None)
+    by_code = {st["code"]: st for st in steplist}
+
+    def local(name):
+        raw = vars_.get(name, (None,))[0]
+        return None if raw is None or "UTC" in str(raw) else _parse_dt(raw)
+
+    started = local("startdatetime")
+    if started is None:
+        try:
+            first = int(vars_.get("startstep", (None,))[0])
+        except (TypeError, ValueError):
+            first = steplist[0]["code"] if steplist else None
+        st = by_code.get(first)
+        started = _parse_dt(st["started"]) if st and st.get("started") else None
+        s101 = by_code.get(101)
+        if started and s101 and first != 101 and s101.get("finished"):
+            f101 = _parse_dt(s101["finished"])
+            if f101 and 0 <= (started - f101).total_seconds() < 120:
+                started = _parse_dt(s101["started"]) or started
+    if started is None:
+        return None, None, None, None
+
+    if overall_status == "RUNNING":
+        return str(started), None, _fmt_duration((now - started).total_seconds()), None
+
+    ended = local("enddatetime")
+    if ended is None or ended < started:
+        finishes = [_parse_dt(st["finished"]) for st in steplist if st.get("finished")]
+        finishes = [f for f in finishes if f and f >= started]
+        ended = max(finishes) if finishes else None
+    total = _fmt_duration((ended - started).total_seconds()) if ended else None
+    return str(started), str(ended) if ended else None, None, total
 
 
 def run_report(conn, manifest, run_dt):
@@ -148,6 +204,8 @@ def run_report(conn, manifest, run_dt):
             overall_status = (vars_.get("status", (None,))[0] or "").upper()
             steps = m["steps"]
             steplist, done = _build_pipeline(vars_, steps, run_dt, overall_status)
+            started_at, ended_at, elapsed, total_time = _run_window(
+                vars_, steplist, run_dt, overall_status)
             total = len(steps)
             pct = _pct(done, total)
             row = {
@@ -170,9 +228,8 @@ def run_report(conn, manifest, run_dt):
                 "trend": trend, "trend_kind": "pct",
                 "steps": steplist, "overall_status": overall_status or "UNKNOWN",
                 "current_process": vars_.get("currentprocess", (None,))[0],
-                "started_at": vars_.get("startdatetime", (None,))[0],
-                "ended_at": vars_.get("enddatetime", (None,))[0],
-                "runtime": vars_.get("totalruntime", (None,))[0],
+                "started_at": started_at, "ended_at": ended_at,
+                "elapsed": elapsed, "total_time": total_time,
                 "last_error": vars_.get("lasterror", (None,))[0] if overall_status == "FAILURE" else None,
                 "alert": overall_status == "FAILURE",
                 # `post_run` is a manifest note the renderer shows only once the run
@@ -622,7 +679,7 @@ def _sample_wikidata_pipeline():
         "trend": [(str(datetime.date(2026, 7, 26)), pct)],
         "trend_kind": "pct", "steps": steps, "overall_status": "RUNNING",
         "current_process": "104: run ETL pass2", "started_at": "2026-07-26 13:02:11",
-        "ended_at": None, "runtime": "RUNNING", "last_error": None, "alert": False,
+        "ended_at": None, "elapsed": "17h28m", "total_time": None, "last_error": None, "alert": False,
         "post_run": _WIKIDATA_POST_RUN, "complete": False,
     }]
     _write_sample("wikidata-etl-pipeline", report, results,
@@ -671,7 +728,7 @@ def _sample_wikidata_pipeline_complete():
             "trend": [("2026-09-27", 33.33), ("2026-09-28", 46.67), ("2026-09-29", 100.0)],
             "trend_kind": "pct", "steps": steps, "overall_status": "SUCCESS",
             "current_process": None, "started_at": "2026-09-25 03:17:04",
-            "ended_at": "2026-09-29 16:11:52", "runtime": "4 days, 12 hours",
+            "ended_at": "2026-09-29 16:11:52", "elapsed": None, "total_time": "4d12h54m",
             "last_error": None, "alert": False,
             "post_run": _WIKIDATA_POST_RUN, "complete": True,
         },
