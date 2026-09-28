@@ -85,13 +85,12 @@ metrics:
     # A verification that has to happen by hand needs a reminder at the one moment it
     # is due, otherwise it is remembered a week later or not at all.
     post_run: |
-      Re-run the WIKIDATA-CRAWLER-025 acceptance on vaugouindb. Read-only, a few minutes:
-      docker exec -i damp-vaugouin-com-mariadb-1 mariadb -uroot -p --force -t vaugouindb < doc/sql/wikidata-v2-025-acceptance.sql
-      Keep the output as doc/sql/wikidata-v2-025-acceptance-YYYYMMDD.txt in the wikidata-crawler repo, next to the baseline.
-      This is the "after" half of the ticket. The "before" was taken on 2026-09-20 (4 653 MB over the seven entity tables) and cannot be taken again.
-      Read F3 first: what decides whether ALIASES_JSON needs a language filter is the ratio MO_FR_EN / MO_TOTAL, not the alias count.
-      F4 has a ceiling of 87,9 %, not 100 %: 20 917 of the 172 179 PERSON_V1 rows with aliases have no row in V2 at all, which is entity coverage (-023), not an alias defect.
-      Then wikidata-run-report.sql for the general run check, and wikidata-v2-020-acceptance.sql if step 106 was replayed.
+      First run after the 2026-09-28 fixes (episodes, alias languages). On the VPS, from ~/docker/wikidata-crawler, each .sql through ~/docker/tools/runsqlvaugouindb.sh, outside any text2sql evaluation:
+      1. Episodes back: episodes_detected must be > 0 in /shared/pass1/run_summary.json, then doc/sql/wikidata-episode-classification-check.sql, E2 dans_serie close to 0 once step 2 is done.
+      2. Second pass of doc/sql/wikidata-serie-episode-cleanup.sql: removes the ~1 500 episodes and 68 seasons that were only in SERIE on 2026-09-28 (SERIE was 180 057 rows after the first pass).
+      3. Aliases now fr + en only: doc/sql/wikidata-v2-025-acceptance.sql, F3 LANGUES at most 2 everywhere. Then, outside a run, OPTIMIZE TABLE T_WC_WIKIDATA_ITEM, T_WC_WIKIDATA_PERSON; to hand the space back.
+      4. doc/sql/wikidata-run-report.sql for the general run check.
+      Keep each output next to its .sql (runsqlvaugouindb.sh does it) and commit them in the wikidata-crawler repo.
     steps:
       - {code: 101, label: "Resolve / download the .bz2 dump"}
       - {code: 102, label: "Pass 1 - classification graph + core entity IDs + P279 edges"}
