@@ -83,14 +83,17 @@ metrics:
       hours each, item_cache measured at 22h45 on the 2026-08 run.
     # Shown by the renderer ONLY when the run is over (SUCCESS and every step done).
     # A verification that has to happen by hand needs a reminder at the one moment it
-    # is due, otherwise it is remembered a week later or not at all.
+    # is due, otherwise it is remembered a week later or not at all. This is the
+    # routine of every run; a one-off check for a given run goes above it, dated,
+    # and comes out once done.
     post_run: |
-      First run after the 2026-09-28 fixes (episodes, alias languages). On the VPS, from ~/docker/wikidata-crawler, each .sql through ~/docker/tools/runsqlvaugouindb.sh, outside any text2sql evaluation:
-      1. Episodes back: episodes_detected must be > 0 in /shared/pass1/run_summary.json, then doc/sql/wikidata-episode-classification-check.sql, E2 dans_serie close to 0 once step 2 is done.
-      2. Second pass of doc/sql/wikidata-serie-episode-cleanup.sql: removes the ~1 500 episodes and 68 seasons that were only in SERIE on 2026-09-28 (SERIE was 180 057 rows after the first pass).
-      3. Aliases now fr + en only: doc/sql/wikidata-v2-025-acceptance.sql, F3 LANGUES at most 2 everywhere. Then, outside a run, OPTIMIZE TABLE T_WC_WIKIDATA_ITEM, T_WC_WIKIDATA_PERSON; to hand the space back.
-      4. doc/sql/wikidata-run-report.sql for the general run check.
-      Keep each output next to its .sql (runsqlvaugouindb.sh does it) and commit them in the wikidata-crawler repo.
+      Routine after every run, in this order:
+      1. Backup done: on the VPS, from ~/docker/wikidata-crawler, cat .last-backup-batch and grep IMPORT_BATCH_ID .env must show the same batch. backup-after-run.sh triggers it on the hourly tick; if they differ an hour after the run, ./backup-after-run.sh --dry-run tells why.
+      2. Copy the dump to the NAS: on the PC, run sync_vps_docker.py (Nestor, projets/t2s-backlog/topics/debian-migration). It brings ~/docker/damp-vaugouin-com/mariadb_backups/vaugouindb-backup-<timestamp>.sql.gz to T:. Check the file is there with the same size as on the VPS.
+      3. Checks, outside any text2sql evaluation: git pull in ~/docker/wikidata-crawler, then through ~/docker/tools/runsqlvaugouindb.sh doc/sql/wikidata-run-report.sql (A3a counts close to their reference figures, a clear drop is the signal; B1 to C3 ok) and doc/sql/wikidata-episode-classification-check.sql (E2 and E3 dans_serie close to 0).
+      4. Bring the outputs back next to their .sql and commit them in the wikidata-crawler repo.
+    links:
+      - {label: "Wikidata dumps (source folder)", url: "https://dumps.wikimedia.org/wikidatawiki/entities/"}
     steps:
       - {code: 101, label: "Resolve / download the .bz2 dump"}
       - {code: 102, label: "Pass 1 - classification graph + core entity IDs + P279 edges"}

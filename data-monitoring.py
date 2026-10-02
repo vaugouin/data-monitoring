@@ -237,6 +237,8 @@ def run_report(conn, manifest, run_dt):
                 # that succeeded with steps still pending (a --start-step resume)
                 # is not the moment to ask for an end-of-run verification.
                 "post_run": m.get("post_run"),
+                # `links`: [{label, url}] shown in the card header, opened in a new tab.
+                "links": m.get("links") or [],
                 "complete": overall_status == "SUCCESS" and done == total,
             })
             continue

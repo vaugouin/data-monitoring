@@ -36,7 +36,11 @@ process liveness**. This repo tracks **campaign trend + completion + ETA** inste
    the card prints **only when the run is over** (`SUCCESS` and every step done,
    computed as `complete` in the runner): the manual end-of-run checks. Not an alert
    banner on purpose, a to-do is not a breached invariant, and mixing the two teaches
-   us to ignore both. A new campaign or guard is a
+   us to ignore both. Keep `post_run` as the routine of every run; a one-off check for one
+   run goes above it, dated, and comes out once done, otherwise the next run repeats it.
+   A `pipeline` metric may also carry `links:`, a list of `{label, url}` printed under
+   the card's meta line and opened in a new tab (the Wikidata dumps folder, since
+   2026-10-02). A new campaign or guard is a
    **new manifest file, not new code** - the design is source-agnostic.
 2. `data-monitoring.py` runs the SQL, upserts one row per metric per day into
    `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders a self-contained HTML

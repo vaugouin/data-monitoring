@@ -182,6 +182,11 @@ def _pipeline_card(m):
         todo = (f'<div class="step-todo">'
                f'<span class="todo-title">Run finished{when}. Still to do:</span>'
                f'<div class="todo-body">{body}</div></div>')
+    links = " &nbsp;·&nbsp; ".join(
+        f'<a href="{html.escape(str(l["url"]))}" target="_blank" rel="noopener noreferrer">'
+        f'{html.escape(str(l.get("label") or l["url"]))} ↗</a>'
+        for l in m.get("links") or [] if l.get("url"))
+    links = f'<div class="pipeline-links">{links}</div>' if links else ""
     return f"""
     <section class="card card-pipeline{' card-alert' if m.get('alert') else ''}">
       <div class="card-head">
@@ -189,6 +194,7 @@ def _pipeline_card(m):
         <span class="metric-key">{html.escape(m['key'])}</span>
       </div>
       <div class="pipeline-meta">{' &nbsp;·&nbsp; '.join(meta_bits)}</div>
+      {links}
       {_coverage_bar(m.get('pct'), 0)}
       {err}
       {todo}
@@ -348,6 +354,9 @@ def render_report(report, metrics, generated_at, db_label, nav=None):
   .step-running .step-label {{ font-weight: 600; color: #1976d2; }}
   .step-pending {{ opacity: .55; }}
   .step-failed .step-label {{ font-weight: 600; color: #d9534f; }}
+  .pipeline-links {{ font-size: 13px; margin: 4px 0 8px; }}
+  .pipeline-links a {{ color: #1976d2; text-decoration: none; font-weight: 600; }}
+  .pipeline-links a:hover {{ text-decoration: underline; }}
   .step-err {{ font-size: 12px; color: #7f231f; margin: 6px 0; }}
   .step-todo {{ margin: 12px 0 2px; padding: 12px 14px; background: #fff8e1;
                 border: 1px solid #ffb300; border-left: 6px solid #ffb300;
