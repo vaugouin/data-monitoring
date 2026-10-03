@@ -87,6 +87,7 @@ metrics:
     # routine of every run; a one-off check for a given run goes above it, dated,
     # and comes out once done.
     post_run: |
+      One-off, added 2026-10-03, remove once checked (TMDB-MOVIE-PREPROCESS-052, Walk of Fame fix on Wikidata). Only valid for a run on a dump generated AFTER 2026-10-03; an earlier dump does not contain the edits. In ~/docker/tmdb-movie-preprocess: git pull, then ~/docker/tools/runsqlvaugouindb.sh doc/sql/test-052-post-fix.sql. Expected in P1, item by item: Kristen Bell (Q178882), Jim Henson (Q191037), Anna Magnani (Q56011), Kelly Clarkson (Q483507), Nipsey Hussle (Q2073970) at sur_lieu 0 and sur_etoile 1; Victor Young (Q365199) and The Beatles (Q1299) still at sur_lieu 1 while their protected items are not fixed. P3/P4 (award row 27042 down to Victor Young alone, row 9550 up by 2) only move after the next tmdb-movie-preprocess pass. Bring the .txt back and commit it in tmdb-movie-preprocess.
       Routine after every run, in this order:
       1. Backup done: on the VPS, from ~/docker/wikidata-crawler, cat .last-backup-batch and grep IMPORT_BATCH_ID .env must show the same batch. backup-after-run.sh triggers it on the hourly tick; if they differ an hour after the run, ./backup-after-run.sh --dry-run tells why.
       2. Copy the dump to the NAS: on the PC, run sync_vps_docker.py (Nestor, projets/t2s-backlog/topics/debian-migration). It brings ~/docker/damp-vaugouin-com/mariadb_backups/vaugouindb-backup-<timestamp>.sql.gz to T:. Check the file is there with the same size as on the VPS.
