@@ -93,6 +93,7 @@ metrics:
       2. Copy the dump to the NAS: on the PC, run sync_vps_docker.py (Nestor, projets/t2s-backlog/topics/debian-migration). It brings ~/docker/damp-vaugouin-com/mariadb_backups/vaugouindb-backup-<timestamp>.sql.gz to T:. Check the file is there with the same size as on the VPS.
       3. Checks, outside any text2sql evaluation: git pull in ~/docker/wikidata-crawler, then through ~/docker/tools/runsqlvaugouindb.sh doc/sql/wikidata-run-report.sql (A3a counts close to their reference figures, a clear drop is the signal; B1 to C3 ok) and doc/sql/wikidata-episode-classification-check.sql (E2 and E3 dans_serie close to 0).
       4. Bring the outputs back next to their .sql and commit them in the wikidata-crawler repo.
+      5. Launch the Wikidata ID fix (selenium-tmdb repo), whose fix and replace queries read the T_WC_WIKIDATA_* tables this run just loaded. On the VPS, ~/docker/selenium-tmdb/preprocess/selenium-tmdb.sh writes fresh wikidata-id-*-fix and wikidata-id-*-replace CSVs. Then on the PC, run selenium-tmdb-wikidata_id.ipynb in Jupyter and watch the browser. Read the -replace CSVs before letting them run: they overwrite valid QIDs on TMDb.
     links:
       - {label: "Wikidata dumps (source folder)", url: "https://dumps.wikimedia.org/wikidatawiki/entities/"}
     steps:
