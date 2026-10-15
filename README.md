@@ -159,6 +159,22 @@ distinct from TV network metadata, season-level availability and cinema showtime
 As with release dates, provider rows are replace-in-place snapshots. The report does
 not derive a historical availability timeline from child-table `DAT_CREAT` values.
 
+### `wikipedia-content-md-backfill`
+
+Backfill of the richer Wikipedia content (Nestor topic `wikipedia-rich-sections`, DDL applied
+2026-10-15): `CONTENT_MD` beside `CONTENT` in `T_WC_WIKIPEDIA_PAGE_LANG_SECTION`, and the new
+`T_WC_WIKIPEDIA_PAGE_LANG_LINK` and `T_WC_WIKIPEDIA_PAGE_LANG_REFERENCE` tables, all written by
+`wikipedia-crawler` 1.1.0 as the WIKIPEDIA-CRAWLER-018 re-crawl reaches each page.
+
+- **No cutoff date**: a page counts as done when it has rows in the link table, which only
+  the new writer produces. Denominator = pages with `PAGE_EXISTS = 1`.
+- **Coverage**: pages, entities, and pages with references (the last one has no 100 % to
+  reach, many pages cite nothing).
+- **Writer health** over the last 24 hours: share of freshly written sections carrying
+  `CONTENT_MD` (should sit near 100 %), and share of links resolved to a Qid, red links and
+  French date links left out (about 87 % in the prototype).
+- Every metric reads 0 until 1.1.0 is deployed, and the two health cards stay red until then.
+
 ### `wikipedia-sections-refresh` + `wikipedia-sections-refresh-by-type`
 
 Freshness of the stored Wikipedia content after `wikipedia-crawler`'s **fine-section

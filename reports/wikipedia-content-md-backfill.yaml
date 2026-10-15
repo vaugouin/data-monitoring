@@ -1,0 +1,118 @@
+# data-monitoring report manifest - CONTENT_MD, link and reference backfill.
+#
+# WHY THIS REPORT EXISTS
+# ----------------------
+# Topic wikipedia-rich-sections (Nestor t2s-backlog, decisions of 2026-10-15): beside the
+# plain text CONTENT, each row of T_WC_WIKIPEDIA_PAGE_LANG_SECTION gains CONTENT_MD, the
+# section as Markdown with links written by Wikipedia title. Two new tables come with it:
+# T_WC_WIKIPEDIA_PAGE_LANG_LINK (one row per internal link, resolved to a Qid) and
+# T_WC_WIKIPEDIA_PAGE_LANG_REFERENCE (one row per footnote, with its text). The DDL was
+# applied on 2026-10-15 (wikipedia-crawler doc/sql/alter-content-md-link-reference.sql);
+# wikipedia-crawler 1.1.0 is the build that fills them. Nothing is written before it runs,
+# and nothing backfills old rows on its own: a page gets its Markdown, links and references
+# the next time the WIKIPEDIA-CRAWLER-018 re-crawl reaches it.
+#
+# This report answers: **how many pages carry the new content, and is the writer healthy?**
+#
+# WHY NO CUTOFF DATE
+# ------------------
+# The sibling wikipedia-sections-refresh measures freshness from LAST_CRAWLED_AT against
+# a go-live timestamp. Here the content itself says whether a page is done (it has rows in
+# the link table), so the headline needs no timestamp and cannot be fooled by pages crawled
+# before 1.1.0 was deployed.
+#
+# COST
+# ----
+# T_WC_WIKIPEDIA_PAGE_LANG_SECTION is huge (see AGENTS.md): it is only ever filtered on the
+# indexed TIM_UPDATED, over the last 24 hours. The link table will reach tens of millions of
+# rows: page counts read the leading (ID_WIKIDATA, LANG) columns of its unique key, which
+# MariaDB answers with a loose index scan (one probe per page, not per link), and the
+# resolution check is limited to the last 24 hours on the TIM_UPDATED index. Denominators
+# come from the small T_WC_WIKIPEDIA_PAGE_LANG (~1.1M rows).
+#
+# READING A ZERO
+# --------------
+# Until wikipedia-crawler 1.1.0 is deployed, every metric reads 0 (or no %), and the two
+# writer-health cards are red. That is the true state, not a fault of the report.
+
+slug: wikipedia-content-md-backfill
+title: "Wikipedia - CONTENT_MD, links and references backfill"
+source_db: WIKIPEDIA
+description: >
+  How much of the Wikipedia corpus carries the Markdown sections (CONTENT_MD), the link
+  table and the reference table written by wikipedia-crawler 1.1.0, filled page by page as
+  the WIKIPEDIA-CRAWLER-018 re-crawl reaches them. Denominator = pages that exist in
+  T_WC_WIKIPEDIA_PAGE_LANG (PAGE_EXISTS = 1).
+
+metrics:
+  - key: content_md_page_backfill
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "Pages (Wikidata ID x language) carrying CONTENT_MD and links"
+    long_desc: >
+      Headline. (ID_WIKIDATA, LANG) pairs with at least one row in the link table, over
+      the pages that exist. The writer stores CONTENT_MD, links and references in the same
+      pass, so a page present in the link table has its Markdown. A page with no internal
+      link at all (rare: stubs, disambiguation leftovers) never enters the link table, so
+      the curve tops out a little under 100 %. The daily rate is the delta against the
+      previous snapshot.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: "SELECT COUNT(*) FROM (SELECT DISTINCT ID_WIKIDATA, LANG FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK) AS PAGES"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE PAGE_EXISTS = 1"
+
+  - key: content_md_entity_backfill
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "Wikidata IDs carrying CONTENT_MD in at least one language"
+    long_desc: >
+      Same as the headline, counted by entity: distinct ID_WIKIDATA in the link table, over
+      the distinct ID_WIKIDATA with an existing page. It runs ahead of the page metric when
+      the crawler has done one language of an entity and not yet the other.
+    warn_below: 50
+    rate_label: "Wikidata IDs/day"
+    done_sql: "SELECT COUNT(*) FROM (SELECT DISTINCT ID_WIKIDATA FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK) AS ENTITIES"
+    expected_sql: "SELECT COUNT(DISTINCT ID_WIKIDATA) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE PAGE_EXISTS = 1"
+
+  - key: content_md_reference_pages
+    table: T_WC_WIKIPEDIA_PAGE_LANG_REFERENCE
+    description: "Pages with at least one reference stored"
+    long_desc: >
+      (ID_WIKIDATA, LANG) pairs with rows in the reference table, over the pages that exist.
+      Many pages cite nothing (short biographies, episode stubs), so this one has no 100 %
+      to reach and no ETA: read it against the headline. It should climb at a steady
+      fraction of it; a flat line while the headline climbs means references stopped being
+      written.
+    warn_below: 0
+    show_eta: false
+    rate_label: "pages/day"
+    done_sql: "SELECT COUNT(*) FROM (SELECT DISTINCT ID_WIKIDATA, LANG FROM T_WC_WIKIPEDIA_PAGE_LANG_REFERENCE) AS PAGES"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG WHERE PAGE_EXISTS = 1"
+
+  - key: content_md_section_fill_last_day
+    table: T_WC_WIKIPEDIA_PAGE_LANG_SECTION
+    description: "Writer health: sections written in the last 24 h that carry CONTENT_MD"
+    long_desc: >
+      Among the section rows written in the 24 hours before the run (TIM_UPDATED), the
+      share with CONTENT_MD filled. Once 1.1.0 runs it should sit at or near 100 %; a drop
+      means a crawler instance still runs an older build, or the converter fails on some
+      HTML shape (Wikipedia served Parsoid HTML for nine hours on 2026-10-15). Not a
+      completion figure, so no ETA.
+    warn_below: 95
+    show_eta: false
+    rate_label: "sections/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG_SECTION WHERE TIM_UPDATED >= NOW() - INTERVAL 1 DAY AND CONTENT_MD IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG_SECTION WHERE TIM_UPDATED >= NOW() - INTERVAL 1 DAY"
+
+  - key: content_md_link_resolution_last_day
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "Writer health: links of the last 24 h resolved to a Qid"
+    long_desc: >
+      Among the links written in the 24 hours before the run, red links and French date
+      links (IS_DATE) left out, the share with a TARGET_ID_WIKIDATA. The prototype resolved
+      about 87 % of linked Qids on 22 pages (round 2, 2026-10-15); the rest are targets with
+      no Wikidata item or pages the API could not resolve. A fall well below that means the
+      resolution pass (local title join, then the Wikipedia API) is failing.
+    warn_below: 80
+    show_eta: false
+    rate_label: "links/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK WHERE TIM_UPDATED >= NOW() - INTERVAL 1 DAY AND IS_REDLINK = 0 AND IS_DATE = 0 AND TARGET_ID_WIKIDATA IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK WHERE TIM_UPDATED >= NOW() - INTERVAL 1 DAY AND IS_REDLINK = 0 AND IS_DATE = 0"

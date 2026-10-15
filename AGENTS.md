@@ -124,6 +124,11 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
   are framed **higher-is-better** so the red-below-threshold colouring reads correctly -
   the quarantine backlog and resolution gap appear as the complement of
   `clean_link_share` / `match_rate`. No cutoff (current-state coverage, not freshness).
+- `wikipedia-content-md-backfill` - backfill of `CONTENT_MD`, `T_WC_WIKIPEDIA_PAGE_LANG_LINK`
+  and `T_WC_WIKIPEDIA_PAGE_LANG_REFERENCE` (wikipedia-crawler 1.1.0, DDL of 2026-10-15). No
+  cutoff: a page is done when it has link rows. Page counts use `SELECT DISTINCT ID_WIKIDATA,
+  LANG` on the link table's unique key (loose index scan, one probe per page); the two
+  writer-health metrics read only the last 24 hours on `TIM_UPDATED`.
 - `tmdb-neighbours-backfill` - progress of the TMDb similar/recommendations backfill
   (`tmdb-crawler` TMDB-CRAWLER-022/023) into `T_WC_TMDB_{MOVIE,SERIE}_{SIMILAR,RECOMMENDATION}`,
   live since **2026-07-07 ~16:00 Paris**. Key modelling choice: the neighbours are
