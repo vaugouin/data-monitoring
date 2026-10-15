@@ -47,7 +47,7 @@ description: >
 metrics:
   - key: content_md_page_backfill
     table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
-    description: "Pages (Wikidata ID x language) carrying CONTENT_MD and links"
+    description: "Pages with CONTENT_MD and links"
     long_desc: >
       Headline. (ID_WIKIDATA, LANG) pairs with at least one row in the link table, over
       the pages that exist. The writer stores CONTENT_MD, links and references in the same
@@ -62,7 +62,7 @@ metrics:
 
   - key: content_md_entity_backfill
     table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
-    description: "Wikidata IDs carrying CONTENT_MD in at least one language"
+    description: "Wikidata IDs with CONTENT_MD"
     long_desc: >
       Same as the headline, counted by entity: distinct ID_WIKIDATA in the link table, over
       the distinct ID_WIKIDATA with an existing page. It runs ahead of the page metric when
@@ -89,7 +89,7 @@ metrics:
 
   - key: content_md_section_fill_last_day
     table: T_WC_WIKIPEDIA_PAGE_LANG_SECTION
-    description: "Writer health: sections written in the last 24 h that carry CONTENT_MD"
+    description: "Last 24 h: sections with CONTENT_MD"
     long_desc: >
       Among the section rows written in the 24 hours before the run (TIM_UPDATED), the
       share with CONTENT_MD filled. Once 1.1.0 runs it should sit at or near 100 %; a drop
@@ -104,7 +104,7 @@ metrics:
 
   - key: content_md_link_resolution_last_day
     table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
-    description: "Writer health: links of the last 24 h resolved to a Qid"
+    description: "Last 24 h: links resolved to a Qid"
     long_desc: >
       Among the links written in the 24 hours before the run, red links and French date
       links (IS_DATE) left out, the share with a TARGET_ID_WIKIDATA. The prototype resolved
