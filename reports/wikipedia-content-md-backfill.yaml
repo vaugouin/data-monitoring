@@ -30,6 +30,18 @@
 # resolution check is limited to the last 24 hours on the TIM_UPDATED index. Denominators
 # come from the small T_WC_WIKIPEDIA_PAGE_LANG (~1.1M rows).
 #
+# PER-FAMILY CARDS   (added 2026-10-17)
+# ----------------------------------------
+# The content_md_type_* cards split the headline by content family (movie, serie, person,
+# location...). As in wikipedia-sections-refresh-by-type, each family is anchored in its own
+# SOURCE TABLE (the `sourcetable` of CONTENT_CONFIG in wikipedia-crawler/
+# wikipedia_page_writer.py, plus T_WC_T2S_LOCATION, which has no crawler process), joined on
+# ID_WIKIDATA with NO ITEM_TYPE filter: ITEM_TYPE records which process wrote the page, not
+# what the entity is. Families overlap (a Qid can be a movie and an item), so the cards do not
+# sum to the headline. Done = the page has link rows, read through the shared `has_content_md`
+# param: an EXISTS probe on the leading (ID_WIKIDATA, LANG) columns of the link table's unique
+# key, one probe per page.
+#
 # READING A ZERO
 # --------------
 # Until wikipedia-crawler 1.1.0 is deployed, every metric reads 0 (or no %), and the two
@@ -43,6 +55,10 @@ description: >
   table and the reference table written by wikipedia-crawler 1.1.0, filled page by page as
   the WIKIPEDIA-CRAWLER-018 re-crawl reaches them. Denominator = pages that exist in
   T_WC_WIKIPEDIA_PAGE_LANG (PAGE_EXISTS = 1).
+
+# {has_content_md} expects the page alias `p` on T_WC_WIKIPEDIA_PAGE_LANG.
+params:
+  has_content_md: "EXISTS (SELECT 1 FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK l WHERE l.ID_WIKIDATA = p.ID_WIKIDATA AND l.LANG = p.LANG)"
 
 metrics:
   - key: content_md_page_backfill
@@ -116,3 +132,258 @@ metrics:
     rate_label: "links/day"
     done_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK WHERE TIM_UPDATED >= NOW() - INTERVAL 1 DAY AND IS_REDLINK = 0 AND IS_DATE = 0 AND TARGET_ID_WIKIDATA IS NOT NULL"
     expected_sql: "SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK WHERE TIM_UPDATED >= NOW() - INTERVAL 1 DAY AND IS_REDLINK = 0 AND IS_DATE = 0"
+
+  - key: content_md_type_movie
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: movie (process 201)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_TMDB_MOVIE that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_MOVIE WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_MOVIE WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_serie
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: serie (process 204)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_TMDB_SERIE that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_SERIE WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_SERIE WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_season
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: season (process 222)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_TMDB_SEASON that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_SEASON WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_SEASON WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_episode
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: episode (process 220)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_TMDB_EPISODE that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_EPISODE WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_EPISODE WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_person
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: person (process 202)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_TMDB_PERSON that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE. The longest-running process; expect it to lag the small families.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_PERSON WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_PERSON WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_character
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: character (processes 205 + 218)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in the family's source tables that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE. Union of T_WC_WIKIDATA_CHARACTER_V1 (205) and T_WC_TMDB_CHARACTER (218).
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_WIKIDATA_CHARACTER_V1 WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$' UNION SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_CHARACTER WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_WIKIDATA_CHARACTER_V1 WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$' UNION SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_CHARACTER WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_location
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: location (no own process)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_T2S_LOCATION that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE. The crawler has no location process: these pages are written by 203 item (or another family that shares the Qid), so this card moves with the item one.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_LOCATION WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_LOCATION WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_sourcework
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: source work (process 224)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_T2S_SOURCE_WORK that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_SOURCE_WORK WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_SOURCE_WORK WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_tmdbcollection
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: tmdbcollection (process 219)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_TMDB_COLLECTION that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_COLLECTION WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_COLLECTION WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_keyword
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: keyword (process 221)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_TMDB_KEYWORD that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_KEYWORD WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_KEYWORD WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_award
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: award (process 215)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_T2S_AWARD that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE. Process 215 selects 0 rows: these pages are written by 203 item.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_AWARD WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_AWARD WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_movement
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: movement (process 211)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_T2S_MOVEMENT that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_MOVEMENT WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_MOVEMENT WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_topic
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: topic (process 217)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_T2S_TOPIC that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_TOPIC WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_TOPIC WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_technical
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: technical (process 223)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_T2S_TECHNICAL that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_TECHNICAL WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_TECHNICAL WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1
+
+  - key: content_md_type_item
+    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
+    description: "CONTENT_MD: item (process 203)"
+    long_desc: >
+      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_WIKIDATA_ITEM_V1 that have link rows, so
+      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE. The catch-all family, which also writes most T_WC_T2S_* pages.
+    warn_below: 50
+    rate_label: "pages/day"
+    done_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_WIKIDATA_ITEM_V1 WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
+    expected_sql: >
+      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
+      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_WIKIDATA_ITEM_V1 WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
+      WHERE p.PAGE_EXISTS = 1

@@ -129,6 +129,10 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
   cutoff: a page is done when it has link rows. Page counts use `SELECT DISTINCT ID_WIKIDATA,
   LANG` on the link table's unique key (loose index scan, one probe per page); the two
   writer-health metrics read only the last 24 hours on `TIM_UPDATED`.
+  Since 2026-10-17 it also carries one `content_md_type_<family>` card per content family
+  (movie, serie, person, location...), anchored in the family's source table like
+  `wikipedia-sections-refresh-by-type`, with the shared `has_content_md` EXISTS probe in
+  `params`. Location has no crawler process: `T_WC_T2S_LOCATION` pages come through 203 item.
 - `tmdb-neighbours-backfill` - progress of the TMDb similar/recommendations backfill
   (`tmdb-crawler` TMDB-CRAWLER-022/023) into `T_WC_TMDB_{MOVIE,SERIE}_{SIMILAR,RECOMMENDATION}`,
   live since **2026-07-07 ~16:00 Paris**. Key modelling choice: the neighbours are
