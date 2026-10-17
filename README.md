@@ -172,7 +172,7 @@ Backfill of the richer Wikipedia content (Nestor topic `wikipedia-rich-sections`
   reach, many pages cite nothing).
 - **Per family** (`content_md_type_*`, added 2026-10-17): the share of existing pages carrying
   `CONTENT_MD` for movie, serie, season, episode, person, character, location, source work,
-  TMDb collection, keyword, award, movement, topic, technical and item. Each family is
+  keyword, award, movement, topic, technical and item. Each family is
   anchored in its source table, as in `wikipedia-sections-refresh-by-type`, not in
   `ITEM_TYPE`; families overlap, so the cards do not sum to the headline.
 - **Writer health** over the last 24 hours: share of freshly written sections carrying

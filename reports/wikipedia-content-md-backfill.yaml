@@ -39,8 +39,11 @@
 # ID_WIKIDATA with NO ITEM_TYPE filter: ITEM_TYPE records which process wrote the page, not
 # what the entity is. Families overlap (a Qid can be a movie and an item), so the cards do not
 # sum to the headline. Done = the page has link rows, read through the shared `has_content_md`
-# param: an EXISTS probe on the leading (ID_WIKIDATA, LANG) columns of the link table's unique
-# key, one probe per page.
+# param: a correlated LIMIT 1 probe on the leading (ID_WIKIDATA, LANG) columns of the link
+# table's unique key, one probe per page. Not EXISTS: MariaDB rewrites an EXISTS into a
+# semi-join that materializes the whole link index (7.8M rows on 2026-10-17, tens of millions
+# later) once per card; the scalar subquery with LIMIT keeps the cost tied to the page count.
+# No tmdbcollection card: T_WC_TMDB_COLLECTION held no Qid with a page (0/0, 2026-10-17).
 #
 # READING A ZERO
 # --------------
@@ -58,7 +61,7 @@ description: >
 
 # {has_content_md} expects the page alias `p` on T_WC_WIKIPEDIA_PAGE_LANG.
 params:
-  has_content_md: "EXISTS (SELECT 1 FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK l WHERE l.ID_WIKIDATA = p.ID_WIKIDATA AND l.LANG = p.LANG)"
+  has_content_md: "(SELECT 1 FROM T_WC_WIKIPEDIA_PAGE_LANG_LINK l WHERE l.ID_WIKIDATA = p.ID_WIKIDATA AND l.LANG = p.LANG LIMIT 1) = 1"
 
 metrics:
   - key: content_md_page_backfill
@@ -267,23 +270,6 @@ metrics:
     expected_sql: >
       SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
       JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_T2S_SOURCE_WORK WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
-      WHERE p.PAGE_EXISTS = 1
-
-  - key: content_md_type_tmdbcollection
-    table: T_WC_WIKIPEDIA_PAGE_LANG_LINK
-    description: "CONTENT_MD: tmdbcollection (process 219)"
-    long_desc: >
-      Existing pages (ID_WIKIDATA, LANG) of the Qids in T_WC_TMDB_COLLECTION that have link rows, so
-      their CONTENT_MD, over all existing pages of those Qids. Not filtered on ITEM_TYPE.
-    warn_below: 50
-    rate_label: "pages/day"
-    done_sql: >
-      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
-      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_COLLECTION WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
-      WHERE p.PAGE_EXISTS = 1 AND {has_content_md}
-    expected_sql: >
-      SELECT COUNT(*) FROM T_WC_WIKIPEDIA_PAGE_LANG p
-      JOIN (SELECT DISTINCT ID_WIKIDATA FROM T_WC_TMDB_COLLECTION WHERE ID_WIKIDATA REGEXP '^Q[0-9]+$') s ON s.ID_WIKIDATA = p.ID_WIKIDATA
       WHERE p.PAGE_EXISTS = 1
 
   - key: content_md_type_keyword

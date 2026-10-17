@@ -131,7 +131,7 @@ is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
   writer-health metrics read only the last 24 hours on `TIM_UPDATED`.
   Since 2026-10-17 it also carries one `content_md_type_<family>` card per content family
   (movie, serie, person, location...), anchored in the family's source table like
-  `wikipedia-sections-refresh-by-type`, with the shared `has_content_md` EXISTS probe in
+  `wikipedia-sections-refresh-by-type`, with the shared `has_content_md` LIMIT 1 probe (not EXISTS, which MariaDB turns into a full link-index semi-join) in
   `params`. Location has no crawler process: `T_WC_T2S_LOCATION` pages come through 203 item.
 - `tmdb-neighbours-backfill` - progress of the TMDb similar/recommendations backfill
   (`tmdb-crawler` TMDB-CRAWLER-022/023) into `T_WC_TMDB_{MOVIE,SERIE}_{SIMILAR,RECOMMENDATION}`,
