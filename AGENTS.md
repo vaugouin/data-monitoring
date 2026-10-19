@@ -70,8 +70,9 @@ user). All manifest SQL **must stay read-only**.
 Dockerized, like the siblings: `python:3.10.5-slim-buster`, `requirements.txt`,
 `CMD python ./data-monitoring.py`. Launched by the host crontab via
 `data-monitoring.sh` (a **one-shot** container - builds, runs, exits; not a daemon).
-Cron slot ~**06:30 Paris** (06:00 is taken by selenium-tmdb), output redirected to
-`cron.log` so cron does not email every run. Output dir `shared_data/data-monitoring/`
+Cron slot **06:30 UTC** (`30 6`, 30 min after selenium-tmdb's `0 6`), i.e. 08:30 Paris
+in summer and 07:30 in winter: the host crontab reads the VPS clock, which stays on
+`Etc/UTC`. Output redirected to `cron.log` so cron does not email every run. Output dir `shared_data/data-monitoring/`
 is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
 
 ## Reports in place
@@ -158,6 +159,16 @@ Two traps when touching these manifests:
   `TIM_RELEASE_DATES_COMPLETED` / `TIM_WATCH_PROVIDERS_COMPLETED` for coverage; never
   derive a historical gather curve from child `DAT_CREAT`. Their fill and freshness
   metrics are non-monotonic and must set `show_eta: false`.
+
+## Clock rule (DEPLOYMENT-015, since 2026-10-19)
+
+Every human-read date is **Europe/Paris with a numeric offset** (`2026-10-19 08:30
++0200`, `%z` or `isoformat()`, never `%Z`/`CEST` and never a fixed `+02:00`: always the
+`Europe/Paris` zone, `USER_TIMEZONE` in `_now()`). Naive `DATETIME` values written to the
+DB (`TIM_*` of the snapshot table) stay **naive Paris**. The VPS host stays `Etc/UTC`, so
+cron hours are UTC. Pages generated before 2026-10-19 print `CEST`/`CET` instead of the
+offset. Manifest SQL comparing `NOW()` with Paris columns becomes exact once the MariaDB
+server clock is on Paris (TMDB-FRONT-100).
 
 ## Conventions
 

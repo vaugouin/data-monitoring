@@ -3,7 +3,9 @@
 # data-monitoring — nightly coverage-report generator.
 # Read-only on the monitored DB; writes one history table and HTML artifacts into
 # the per-stack shared_data subdir. One-shot: it builds, runs to completion, exits
-# (NOT a daemon — unlike the crawlers). Invoked from cron at ~06:30 Paris:
+# (NOT a daemon, unlike the crawlers). Invoked from the host crontab, which reads
+# the host clock (Etc/UTC, kept on purpose): 06:30 UTC, i.e. 08:30 Paris in summer
+# (CEST, +0200) and 07:30 Paris in winter (CET, +0100), 30 min after selenium-tmdb:
 #   30 6 * * * /home/debian/docker/data-monitoring/data-monitoring.sh >> /home/debian/docker/data-monitoring/cron.log 2>&1
 # The >> ... 2>&1 redirect keeps cron from emailing the job output every night.
 

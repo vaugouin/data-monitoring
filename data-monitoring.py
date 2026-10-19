@@ -331,7 +331,7 @@ def _day_nav(slug, run_dt, out_dir):
 def write_artifacts(report, results, run_dt, db_label):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     stamp = run_dt.strftime("%Y%m%d")
-    generated_at = run_dt.strftime("%Y-%m-%d %H:%M %Z")
+    generated_at = run_dt.strftime("%Y-%m-%d %H:%M %z")
     nav = _day_nav(report["slug"], run_dt, OUTPUT_DIR)
     html_doc = render.render_report(report, results, generated_at, db_label, nav=nav)
     fname = f"{report['slug']}-{stamp}.html"
@@ -344,7 +344,7 @@ def write_artifacts(report, results, run_dt, db_label):
 def write_index(report_files, run_dt):
     """A tiny landing page linking the day's reports, plus a stable latest copy."""
     stamp = run_dt.strftime("%Y%m%d")
-    generated_at = run_dt.strftime("%Y-%m-%d %H:%M %Z")
+    generated_at = run_dt.strftime("%Y-%m-%d %H:%M %z")
     links = "\n".join(
         f'<li><a href="{f}">{f}</a></li>' for f in sorted(report_files)
     )

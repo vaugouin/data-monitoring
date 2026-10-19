@@ -99,12 +99,18 @@ FLUSH PRIVILEGES;
 ## Deployment (VPS, Docker, cron)
 
 One-shot container (builds, runs, exits - not a daemon), launched by `data-monitoring.sh`
-from the host crontab at ~06:30 Paris, output redirected to a log so cron does not
-email each run:
+from the host crontab at 06:30 **UTC**, output redirected to a log so cron does not
+email each run. The VPS clock stays on `Etc/UTC` (cron, certificates), so this slot is
+08:30 Paris in summer and 07:30 Paris in winter, 30 minutes after selenium-tmdb
+(`0 6`, also UTC). A fixed UTC hour cannot be the same Paris hour all year.
 
 ```cron
+# 06:30 UTC = 08:30 Paris (summer, +0200) / 07:30 Paris (winter, +0100)
 30 6 * * * /home/debian/docker/data-monitoring/data-monitoring.sh >> /home/debian/docker/data-monitoring/cron.log 2>&1
 ```
+
+Report stamps (`Generated ...` in each page and in the index) are Paris time with a
+numeric offset, e.g. `2026-10-19 08:30 +0200`.
 
 Output dir `shared_data/data-monitoring/` is mirrored to the NAS by
 `sync_vps_docker.py` before the 30-day prune, so expiring HTML is archived first.
