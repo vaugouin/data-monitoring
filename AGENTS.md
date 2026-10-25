@@ -75,7 +75,7 @@ in summer and 07:30 in winter: the host crontab reads the VPS clock, which stays
 `Etc/UTC`. Output redirected to `cron.log` so cron does not email every run. Output dir `shared_data/data-monitoring/`
 is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
 
-`off.sh` / `on.sh` rename `data-monitoring.sh` so the next cron tick skips it, then restore it. `~/docker/off-all.sh` and `on-all.sh` call them before and after an evaluation campaign or a load test (LOAD-TESTING-003, 2026-10-21).
+`off.sh` writes the flag file `CRON_OFF`, which makes `data-monitoring.sh` exit at once on the next cron tick, and `on.sh` deletes it (2026-10-25; before, they renamed the script, which left the clone dirty). `~/docker/off-all.sh` and `on-all.sh` call them before and after an evaluation campaign or a load test (LOAD-TESTING-003, 2026-10-21).
 
 ## Reports in place
 

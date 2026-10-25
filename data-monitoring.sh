@@ -9,6 +9,13 @@
 #   30 6 * * * /home/debian/docker/data-monitoring/data-monitoring.sh >> /home/debian/docker/data-monitoring/cron.log 2>&1
 # The >> ... 2>&1 redirect keeps cron from emailing the job output every night.
 
+# Switched off by off.sh, back on with on.sh: the flag file CRON_OFF next to this script makes
+# every cron tick exit here. The script keeps its name, so the git clone stays clean.
+if [ -f "$(dirname "$(readlink -f "$0")")/CRON_OFF" ]; then
+    echo "CRON_OFF present: data-monitoring switched off (bash on.sh to switch it back on)."
+    exit 0
+fi
+
 if [ "$(docker ps -q -f name=data-monitoring)" ]; then
     echo "data-monitoring container is already running."
 else
