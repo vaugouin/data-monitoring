@@ -22,6 +22,7 @@ import argparse
 import datetime
 import glob
 import os
+import re
 import sys
 
 import render
@@ -353,6 +354,20 @@ def write_index(report_files, run_dt, ops_file=None):
     if ops_file:
         links = (f'<li><a href="ops-latest.html"><b>Automated tasks (ops dashboard)</b></a>'
                  f' · <a href="{ops_file}">{ops_file}</a></li>\n' + links)
+    # History: every dated page still on disk (30 days), one line per day. It replaces
+    # the bare directory listing now that index.html makes /data-monitoring/ land here.
+    by_day = {}
+    for path in glob.glob(os.path.join(OUTPUT_DIR, "*-2*.html")):
+        name = os.path.basename(path)
+        m = re.match(r"^(.+)-(\d{8})\.html$", name)
+        if m and m.group(1) != "index":
+            by_day.setdefault(m.group(2), []).append((m.group(1), name))
+    history = "\n".join(
+        f'<li>{d[:4]}-{d[4:6]}-{d[6:]}: '
+        + " · ".join(f'<a href="{n}">{s}</a>' for s, n in sorted(by_day[d],
+                                                               key=lambda x: (x[0] != "ops", x[0])))
+        + "</li>"
+        for d in sorted(by_day, reverse=True))
     doc = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -364,9 +379,14 @@ h1{{font-size:18px}} li{{margin:4px 0}} .meta{{color:#90a4ae;font-size:12px}}</s
 <div class="meta">Generated {generated_at}</div>
 <ul>
 {links}
+</ul>
+<h1>History</h1>
+<ul>
+{history}
 </ul></body></html>
 """
-    for name in (f"index-{stamp}.html", "index-latest.html"):
+    # index.html is what /data-monitoring/ serves (Apache DirectoryIndex).
+    for name in (f"index-{stamp}.html", "index-latest.html", "index.html"):
         with open(os.path.join(OUTPUT_DIR, name), "w", encoding="utf-8") as fh:
             fh.write(doc)
 
@@ -1010,9 +1030,13 @@ def main():
     if args.ops_only:
         conn = db.get_connection()
         try:
-            run_ops(conn, run_dt)
+            ops_file = run_ops(conn, run_dt)
         finally:
             conn.close()
+        # Refresh the landing page too, keeping the reports already written today.
+        stamp = run_dt.strftime("%Y%m%d")
+        today = [os.path.basename(p) for p in glob.glob(os.path.join(OUTPUT_DIR, f"*-{stamp}.html"))]
+        write_index([f for f in today if not f.startswith(("ops-", "index-"))], run_dt, ops_file)
         return
 
     manifests = _find_manifests(args.report)

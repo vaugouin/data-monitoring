@@ -39,7 +39,7 @@ crash or silently stop, and are the services up. See [Ops dashboard](#ops-dashbo
   line and opened in a new tab (the Wikidata dumps folder, for instance).
 - `data-monitoring.py` runs the SQL, upserts one row per metric per day into
   `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders `<slug>-YYYYMMDD.html`
-  (+ `index-YYYYMMDD.html` and `index-latest.html`) into `OUTPUT_DIR`, and prunes
+  (+ `index-YYYYMMDD.html`, `index-latest.html` and `index.html`, the page `/data-monitoring/` serves, with a 30-day history) into `OUTPUT_DIR`, and prunes
   HTML older than `RETENTION_DAYS`.
 - `render.py` produces HTML with inline CSS + inline SVG only - no CDN/JS, opens
   offline, archives cleanly.
