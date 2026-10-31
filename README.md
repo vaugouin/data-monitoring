@@ -31,6 +31,8 @@ liveness.
   over** (overall `SUCCESS` and every step done): the end-of-run checks a human still has
   to do by hand. It is deliberately not an alert banner, because a to-do is not a
   breached invariant and mixing the two teaches you to ignore both.
+  It may also carry `links:`, a list of `{label, url}` printed under the card's meta
+  line and opened in a new tab (the Wikidata dumps folder, for instance).
 - `data-monitoring.py` runs the SQL, upserts one row per metric per day into
   `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders `<slug>-YYYYMMDD.html`
   (+ `index-YYYYMMDD.html` and `index-latest.html`) into `OUTPUT_DIR`, and prunes
@@ -81,7 +83,9 @@ python backfill_day_nav.py /path/to/reports             # inject after </header>
 It inserts a self-styled `<nav>` (inline styles, no dependency on the page's CSS)
 and reads prev/next existence from the files actually present in the directory, so an
 archive links only to days that exist. Safe to run repeatedly and on both the live
-`OUTPUT_DIR` and the NAS archive.
+`OUTPUT_DIR` and the NAS archive. On the VPS, `backfill-day-nav.sh` runs it in the
+daily job's Docker image (`--dry-run` is forwarded; `NAV_BACKFILL_DIR` points it at
+another directory, such as the NAS copy).
 
 ## Database user (least privilege)
 
@@ -108,6 +112,9 @@ email each run. The VPS clock stays on `Etc/UTC` (cron, certificates), so this s
 # 06:30 UTC = 08:30 Paris (summer, +0200) / 07:30 Paris (winter, +0100)
 30 6 * * * /home/debian/docker/data-monitoring/data-monitoring.sh >> /home/debian/docker/data-monitoring/cron.log 2>&1
 ```
+
+`off.sh` writes the flag file `CRON_OFF`, which makes `data-monitoring.sh` exit at once,
+and `on.sh` deletes it.
 
 Report stamps (`Generated ...` in each page and in the index) are Paris time with a
 numeric offset, e.g. `2026-10-19 08:30 +0200`.
@@ -321,9 +328,12 @@ Two metrics sit beside the timeline, both reading small tables only:
   `apply_to_live_db.sql`, then 14/14 for good.
 
 Once a run finishes, the card prints an end-of-run reminder (the manifest's `post_run`):
-re-run `doc/sql/wikidata-v2-025-acceptance.sql` in the `wikidata-crawler` repo and keep
-its output next to the 2026-09-20 baseline. That verification is read-only and manual,
-and the morning after the run is the one moment it is due.
+the dated one-off checks still pending, then the routine after every run (backup done,
+dump copied to the NAS, `doc/sql/wikidata-run-report.sql` and
+`doc/sql/wikidata-episode-classification-check.sql` re-run in the `wikidata-crawler` repo
+with their outputs committed, then the Wikidata ID fix of `selenium-tmdb`). Those
+verifications are manual, and the morning after the run is the one moment they are due.
+The card also links the Wikidata dumps folder (`links:`).
 
 Cadence note: data-monitoring runs once a day (~06:30), so this is a daily **checkpoint**
 of a days-long job, not a live console - for real-time step status use tmdb-front's

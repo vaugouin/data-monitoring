@@ -1,197 +1,71 @@
 # AGENTS.md - Agent Guide for data-monitoring
 
 Single canonical guide for autonomous coding agents in this repo. `CLAUDE.md` (and
-any future `GEMINI.md`) only point here. For human-facing setup, read @README.md.
+any future `GEMINI.md`) only point here. What the tool does, how it runs, the manifest
+format, setup, deployment and every report: @README.md. Each manifest's header
+comments carry its modelling details and caveats.
 
-## What this repo is
+## Scope
 
-`data-monitoring` is the **observability** stage of the **Agent BBB** ecosystem
-(roster: `%USERPROFILE%/Nestor/projets/t2s-backlog/topics/related-repositories.txt`). It does
-**not** gather or transform data. It reads the finished `T_WC_*` tables and produces
-nightly **coverage / progress reports** for long-running backfill campaigns - e.g.
-the multi-month TV season/episode gather driven by `tmdb-crawler`.
+Observability stage of the Agent BBB ecosystem (roster:
+`%USERPROFILE%/Nestor/projets/t2s-backlog/topics/related-repositories.txt`): campaign
+trend, completion and ETA, never realtime liveness (that is `srvvar.php`). It is
+deliberately absent from the entity pipeline template
+`%USERPROFILE%/Nestor/projets/t2s-backlog/topics/groups-multi-repo-management.md`.
 
-It deliberately sits **outside** the entity pipeline described in
-`%USERPROFILE%/Nestor/projets/t2s-backlog/topics/groups-multi-repo-management.md` (that doc is a
-T2S *entity* template; this tool is orthogonal and is intentionally absent from it).
+## Rules
 
-Distinct from `html/back/srvvar.php` / `T_WC_SERVER_VARIABLE`, which tracks **realtime
-process liveness**. This repo tracks **campaign trend + completion + ETA** instead.
-
-## How it works
-
-1. Each report is a manifest `reports/<slug>.yaml` - a bundle of metrics, each with
-   read-only `done_sql` / `expected_sql` (and an optional `trend_sql` for a per-day
-   rate sparkline, `rate_label` for the printed unit). A manifest-level `params:` map
-   is substituted into the SQL via `str.format()`, so a value repeated across metrics
-   (a campaign cutoff date) lives in one place. A metric may also set `kind: alert_zero`
-   (default is `coverage`): its `done_sql` returns a count that must always be 0 (an
-   invariant / regression guard, no `expected_sql`); `render._alert_card` shows an OK/ALERT
-   card and `render._alert_banner` raises a page-top banner when the count is > 0. A third
-   kind, `pipeline`, tracks a multi-step batch job: it reads per-step
-   `T_WC_SERVER_VARIABLE` markers (`var_prefix` + a `steps:` list of `{code,label}`), no
-   SQL, and `render._pipeline_card` draws a step timeline. Its step count is
-   `len(steps)`, never a literal, so adding a step to the tracked job is a manifest
-   edit and nothing else. A `pipeline` metric may also carry `post_run:`, free text
-   the card prints **only when the run is over** (`SUCCESS` and every step done,
-   computed as `complete` in the runner): the manual end-of-run checks. Not an alert
-   banner on purpose, a to-do is not a breached invariant, and mixing the two teaches
-   us to ignore both. Keep `post_run` as the routine of every run; a one-off check for one
-   run goes above it, dated, and comes out once done, otherwise the next run repeats it.
-   A `pipeline` metric may also carry `links:`, a list of `{label, url}` printed under
-   the card's meta line and opened in a new tab (the Wikidata dumps folder, since
-   2026-10-02). A new campaign or guard is a
-   **new manifest file, not new code** - the design is source-agnostic.
-2. `data-monitoring.py` runs the SQL, upserts one row per metric per day into
-   `T_WC_DATA_MONITORING_SNAPSHOT` (idempotent), renders a self-contained HTML
-   artifact `<slug>-YYYYMMDD.html` (+ daily `index` and `index-latest.html`) into
-   `OUTPUT_DIR` (`/shared`), and prunes HTML older than `RETENTION_DAYS`.
-3. `render.py` builds the HTML: inline CSS + inline SVG only (no CDN/JS), so reports
-   open offline and archive cleanly. Each page also carries a prev/next **day-nav** bar
-   (`render._day_nav_bar`, hrefs computed in `write_artifacts._day_nav`) to walk the same
-   report over time.
-4. `backfill_day_nav.py` is a one-shot, idempotent maintenance tool that injects that
-   nav bar into **already-generated** pages (they cannot be faithfully regenerated: a
-   pipeline card's step state comes from overwritten server variables). It edits the HTML
-   in place after `</header>` with an inline-styled `<nav>` and reads prev/next existence
-   from the files present in the target dir. Run it on `OUTPUT_DIR` and the NAS archive.
-
-## Database access (least privilege)
-
-The `monitoring_ro` user is **read-only on the whole schema** and holds **INSERT +
-UPDATE only** on `T_WC_DATA_MONITORING_SNAPSHOT` (the UPDATE serves the same-day
-idempotent re-run). **No DELETE** - snapshot history is never pruned; it is the
-trend. Mirrors the fastapi-text2sql pattern (read-only DB + write-only cache table).
-DDL: `doc/sql/T_WC_DATA_MONITORING_SNAPSHOT.sql` (run once by a CREATE-privileged
-user). All manifest SQL **must stay read-only**.
-
-## Deployment
-
-Dockerized, like the siblings: `python:3.10.5-slim-buster`, `requirements.txt`,
-`CMD python ./data-monitoring.py`. Launched by the host crontab via
-`data-monitoring.sh` (a **one-shot** container - builds, runs, exits; not a daemon).
-Cron slot **06:30 UTC** (`30 6`, 30 min after selenium-tmdb's `0 6`), i.e. 08:30 Paris
-in summer and 07:30 in winter: the host crontab reads the VPS clock, which stays on
-`Etc/UTC`. Output redirected to `cron.log` so cron does not email every run. Output dir `shared_data/data-monitoring/`
-is mirrored to the NAS by `sync_vps_docker.py` before the 30-day prune.
-
-`off.sh` writes the flag file `CRON_OFF`, which makes `data-monitoring.sh` exit at once on the next cron tick, and `on.sh` deletes it (2026-10-25; before, they renamed the script, which left the clone dirty). `~/docker/off-all.sh` and `on-all.sh` call them before and after an evaluation campaign or a load test (LOAD-TESTING-003, 2026-10-21).
+- A new campaign or guard is a **new manifest file, not new code**. Every new feature
+  elsewhere in the ecosystem comes with a tracking metric here (rule from tmdb-crawler
+  `AGENTS.md`); comment what a NULL/zero means (usually "upstream has no value").
+- All manifest SQL **must stay read-only**. `monitoring_ro` may only INSERT/UPDATE the
+  snapshot table, never DELETE: snapshot history is the trend and is never pruned.
+- `post_run:` is the routine of every run. A one-off check for one run goes above it,
+  dated, and comes out once done, otherwise the next run repeats it. It is not an alert
+  banner on purpose: a to-do is not a breached invariant.
+- A `pipeline` metric's step count is `len(steps)`, never a literal.
+- Pages already generated cannot be faithfully regenerated (step state comes from
+  overwritten server variables): retrofit them with `backfill_day_nav.py`, never by
+  re-rendering.
+- Test offline with `--sample` and `--print-sql` (no DB); validate the live path on the VPS.
+- SQL naming follows the ecosystem (`T_WC_*`, `DAT_*`, `TIM_*`, `*_COUNT`); files UTF-8.
 
 ## Reports in place
 
-- `tmdb-tv-coverage` - TMDb TV season/episode backfill (V1).
-- `tmdb-release-dates-coverage` - Process 34 coverage, 35-day freshness and
-  structural quality for the additive `T_WC_TMDB_MOVIE_RELEASE_DATE` snapshots.
-  Completion comes from `T_WC_TMDB_MOVIE.TIM_RELEASE_DATES_COMPLETED`; an empty
-  child snapshot is a valid result and `DAT_RELEASE` remains untouched.
-- `tmdb-watch-providers-coverage` - Processes 35/36 coverage, 35-day freshness,
-  current fill and attribution integrity for movie and series TMDb / JustWatch
-  snapshots. Completion comes from the parent markers, not child-row presence.
-- `wikipedia-sections-refresh` + `wikipedia-sections-refresh-by-type` - how much of the
-  Wikidata universe has been re-crawled since `wikipedia-crawler`'s fine-section split
-  (H2+H3, WIKIPEDIA-CRAWLER-016) went live on **2026-07-20 23:00 Paris**. Anything last
-  crawled before that cutoff still holds coarse H2-only sections, so these two are pure
-  **freshness** reports, not gathering-completeness ones. Details and caveats live in
-  the manifest headers; a summary is in @README.md.
-- `wikidata-etl-pipeline` - step timeline for the multi-day Wikidata dump ingestion
-  (`wikidata-crawler`, steps 101-**115**). Uses the `kind: pipeline` metric type: it reads the
-  orchestrator's per-step `T_WC_SERVER_VARIABLE` markers
-  (`strwikidatacrawlerstep<code>{status,startedat,finishedat}`) rather than SQL, because
-  the early passes produce files on `/shared`, not DB rows. Renders each step as
-  done/running/pending/failed with durations; snapshot stores steps-done/15 for a daily
-  trend; a run FAILURE hits the alert banner. Deliberately a daily checkpoint, not a live
-  console (that is srvvar.php). This is the first use of the `pipeline` kind, and since 2026-09-20
-  the first use of `post_run`.
-  **Kept in step with the crawler** (last synced 2026-09-20): step 115 prunes the
-  previous batch from staging; step 106 rebuilds the V1 backfill seed before the pass
-  (`WIKIDATA-CRAWLER-023`); steps 104/106 emit `ALIASES_JSON` (`-025`). Two coverage
-  metrics came with them, both on small tables: `wikidata_v1_backfill` (from the
-  `strwikidatacrawlerv1backfill*` variables, with `seeded - skippedcore` as the
-  denominator, because `item_cache` refuses by design to write a core entity into
-  `ITEM` and counting those in would cap the bar below 100 % forever) and
-  `wikidata_aliases_ddl` (`information_schema` only, so it survives the days before
-  the column exists: a query naming `ALIASES_JSON` in a `FROM` would fail to parse
-  and take the whole report down). When the crawler gains a step or a marker, this
-  manifest is what has to follow.
-- `tmdb-poster-invariants` - regression guard (NOT a backfill): French posters must never
-  sit at `DISPLAY_ORDER 0` (reserved for the en/'' canonical) after TMDB-CRAWLER-024/025/026.
-  Two `kind: alert_zero` metrics count FR posters at 0 in `T_WC_TMDB_{MOVIE,SERIE}_IMAGE`;
-  both must stay 0, and any breach raises a page-top ALERT banner + red card. This is the
-  first use of the `alert_zero` metric kind (see below).
-- `tmdb-company-wikidata` - progress + quality of the TMDb company→Wikidata backfill
-  (`tmdb-movie-preprocess` Process 63, TMDB-MOVIE-PREPROCESS-015). A long **rolling**
-  campaign (≤3000 companies/run, `TIM_WIKIPEDIA_SEARCH ASC`). Modelling: eligible universe
-  = non-empty `NAME` + not deleted (the crawler's own filter, kept DRY in `params.eligible`);
-  a match writes `ID_WIKIDATA`+`CONFIDENCE`+`TIM_WIKIPEDIA_SEARCH`, a miss writes only the
-  timestamp, quarantine = `CONFIDENCE` 0.50 sentinel (usable floor 0.9). All five metrics
-  are framed **higher-is-better** so the red-below-threshold colouring reads correctly -
-  the quarantine backlog and resolution gap appear as the complement of
-  `clean_link_share` / `match_rate`. No cutoff (current-state coverage, not freshness).
-- `wikipedia-content-md-backfill` - backfill of `CONTENT_MD`, `T_WC_WIKIPEDIA_PAGE_LANG_LINK`
-  and `T_WC_WIKIPEDIA_PAGE_LANG_REFERENCE` (wikipedia-crawler 1.1.0, DDL of 2026-10-15). No
-  cutoff: a page is done when it has link rows. Page counts use `SELECT DISTINCT ID_WIKIDATA,
-  LANG` on the link table's unique key (loose index scan, one probe per page); the two
-  writer-health metrics read only the last 24 hours on `TIM_UPDATED`.
-  Since 2026-10-17 it also carries one `content_md_type_<family>` card per content family
-  (movie, serie, person, location...), anchored in the family's source table like
-  `wikipedia-sections-refresh-by-type`, with the shared `has_content_md` LIMIT 1 probe (not EXISTS, which MariaDB turns into a full link-index semi-join) in
-  `params`. Location has no crawler process: `T_WC_T2S_LOCATION` pages come through 203 item.
-- `tmdb-neighbours-backfill` - progress of the TMDb similar/recommendations backfill
-  (`tmdb-crawler` TMDB-CRAWLER-022/023) into `T_WC_TMDB_{MOVIE,SERIE}_{SIMILAR,RECOMMENDATION}`,
-  live since **2026-07-07 ~16:00 Paris**. Key modelling choice: the neighbours are
-  fetched inside the crawler's *full* re-crawl, so the true completion signal is
-  `T_WC_TMDB_{MOVIE,SERIE}.TIM_UPDATED >= cutoff` (the re-crawl-progress metrics), NOT a
-  count on the neighbour tables - a title re-crawled but with no TMDb neighbour writes
-  no row, so the four `*_fill` metrics structurally cannot reach 100%. Both angles are in
-  the manifest, re-crawl first.
+The list and the meaning of each report: README.md § Reports. `wikidata-etl-pipeline`
+mirrors `wikidata-crawler`'s steps (101-115) and `T_WC_SERVER_VARIABLE` markers (last
+synced 2026-09-20): when the crawler gains a step or a marker, this manifest has to follow.
 
-Two traps when touching these manifests:
+Traps when touching manifests:
 
-- **The snapshot unique key does NOT include `REPORT_SLUG`** - it is
+- **The snapshot unique key does NOT include `REPORT_SLUG`**: it is
   `(DAT_CREAT, SOURCE_DB, TABLE_NAME, METRIC_KEY)`. Two reports on the same table must
-  not reuse a metric key, or their daily rows silently overwrite each other. Run
-  `python data-monitoring.py --print-sql`: it flags the collision.
+  not reuse a metric key, or their daily rows silently overwrite each other.
+  `--print-sql` flags the collision.
 - **`T_WC_WIKIPEDIA_PAGE_LANG_SECTION` is huge** (~170M rows). Only ever filter it on
-  the indexed `TIM_UPDATED` range; a `COUNT(DISTINCT ID_WIKIDATA)` over the whole table
-  would scan it entirely every night. The denominators above deliberately come from
-  the small `T_WC_WIKIPEDIA_PAGE_LANG` (~1.1M rows) instead.
-- **Release-date and watch-provider child tables are authoritative snapshots.** A
-  successful refresh deletes and reinserts a title's rows, and a valid empty response
-  leaves no row while stamping the parent completion marker. Use
-  `TIM_RELEASE_DATES_COMPLETED` / `TIM_WATCH_PROVIDERS_COMPLETED` for coverage; never
-  derive a historical gather curve from child `DAT_CREAT`. Their fill and freshness
-  metrics are non-monotonic and must set `show_eta: false`.
+  the indexed `TIM_UPDATED` range; take denominators from the small
+  `T_WC_WIKIPEDIA_PAGE_LANG` (~1.1M rows). On the link table, probe with a correlated
+  `LIMIT 1`, not `EXISTS` (MariaDB turns it into a full semi-join; see the
+  `wikipedia-content-md-backfill` manifest header).
+- **Release-date and watch-provider child tables are authoritative snapshots**
+  (delete + reinsert per title; a valid empty response leaves no row but stamps the
+  parent). Use `TIM_RELEASE_DATES_COMPLETED` / `TIM_WATCH_PROVIDERS_COMPLETED` for
+  coverage, never derive a gather curve from child `DAT_CREAT`, and set
+  `show_eta: false` on their non-monotonic fill/freshness metrics.
+- Querying a column that may not exist yet takes the whole report down at parse time:
+  check existence through `information_schema` (as `wikidata_aliases_ddl` does).
 
 ## Clock rule (DEPLOYMENT-015, since 2026-10-19)
 
 Every human-read date is **Europe/Paris with a numeric offset** (`2026-10-19 08:30
-+0200`, `%z` or `isoformat()`, never `%Z`/`CEST` and never a fixed `+02:00`: always the
-`Europe/Paris` zone, `USER_TIMEZONE` in `_now()`). Naive `DATETIME` values written to the
-DB (`TIM_*` of the snapshot table) stay **naive Paris**. The VPS host stays `Etc/UTC`, so
-cron hours are UTC. Pages generated before 2026-10-19 print `CEST`/`CET` instead of the
-offset. Manifest SQL comparing `NOW()` with Paris columns becomes exact once the MariaDB
-server clock is on Paris (TMDB-FRONT-100).
-
-## Conventions
-
-- **Add a tracking query with every new feature** - the ecosystem rule (see
-  tmdb-crawler `AGENTS.md`). Here that means: a new campaign/column to watch = a new
-  metric in a manifest. Comment what a NULL/zero means (usually "upstream has no
-  value", not a gathering miss).
-- SQL naming follows the ecosystem (`T_WC_*`, `DAT_*`, `TIM_*`, `*_COUNT`, …).
-- Keep files UTF-8.
-- Test offline with `python data-monitoring.py --sample` (no DB, writes
-  `samples/`) and `--print-sql` (no DB, resolves `params:` and checks metric keys);
-  validate the live path on the VPS where the DB is reachable.
-
-**Last Updated**: 2026-08-19
++0200`, `%z` or `isoformat()`, never `%Z`/`CEST` and never a fixed `+02:00`:
+`USER_TIMEZONE` in `_now()`). Naive `DATETIME` values written to the DB stay **naive
+Paris**. The VPS host stays `Etc/UTC`, so cron hours are UTC. Pages generated before
+2026-10-19 print `CEST`/`CET`. Manifest SQL comparing `NOW()` with Paris columns is exact
+only once the MariaDB server clock is on Paris (TMDB-FRONT-100).
 
 ## Backlog (Nestor second-brain)
 
-The implementation backlog for the Agent BBB ecosystem lives in the **Nestor** knowledge repo
-(a separate repo, not cloned alongside this one). This repo has no dedicated backlog file yet;
-use the cross-repo dashboard:
-
-- Dashboard: `C:\Users\vaugo\Nestor\projets\t2s-backlog\index.md`
-
-NOTE: this is a local path on Philippe's PC and does not resolve on the VPS or on cloud agents.
+No dedicated backlog file; use the cross-repo dashboard
+`C:\Users\vaugo\Nestor\projets\t2s-backlog\index.md` (local path on Philippe's PC, absent
+on the VPS and on cloud agents).
