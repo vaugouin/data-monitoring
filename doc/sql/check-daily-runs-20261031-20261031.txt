@@ -1,0 +1,17 @@
+-- check-daily-runs-20261031.sql
+-- run on vaugouindb (container damp-vaugouin-com-mariadb-1) at 2026-10-31 18:51:42 +0100
+--
++------------------------------------+------------+---------------------+------------+
+| REPORT_SLUG                        | LAST_DAY   | LAST_RUN            | ROWS_TOTAL |
++------------------------------------+------------+---------------------+------------+
+| wikipedia-sections-refresh         | 2026-10-31 | 2026-10-31 07:30:07 |        594 |
+| tmdb-watch-providers-coverage      | 2026-10-31 | 2026-10-31 07:30:07 |        584 |
+| tmdb-poster-invariants             | 2026-10-31 | 2026-10-31 07:30:07 |        192 |
+| wikipedia-content-md-backfill      | 2026-10-31 | 2026-10-31 07:30:07 |        276 |
+| tmdb-tv-coverage                   | 2026-10-31 | 2026-10-31 07:30:07 |        520 |
+| tmdb-neighbours-backfill           | 2026-10-31 | 2026-10-31 07:30:07 |        588 |
+| wikipedia-sections-refresh-by-type | 2026-10-31 | 2026-10-31 07:30:07 |       1881 |
+| wikidata-etl-pipeline              | 2026-10-31 | 2026-10-31 07:30:07 |        178 |
+| tmdb-release-dates-coverage        | 2026-10-31 | 2026-10-31 07:30:07 |        365 |
+| tmdb-company-wikidata              | 2026-10-31 | 2026-10-31 07:30:07 |        485 |
++------------------------------------+------------+---------------------+------------+
