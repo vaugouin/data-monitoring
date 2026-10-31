@@ -1,0 +1,341 @@
+# Registry of the ops dashboard (ops.py): every automated task of the VPS and every
+# service that must stay up. A new cron job or container is a new entry here, not new
+# code. A crontab line no task claims still shows under "Other cron jobs", and an
+# unclaimed container under "Other containers", so nothing new stays invisible.
+#
+# Inventory taken 2026-10-31 from the code of each repo and from the canonical crontab
+# ~/Nestor/projets/t2s-backlog/topics/debian-migration/ovh-pv7-crontab.txt.
+#
+# Task fields
+#   slug, label, group, repo, description   identity and display
+#   prefix        server-variable prefix: reads <prefix>startdatetime, enddatetime,
+#                 currentprocess, totalruntime (the house idiom)
+#   vars          explicit names, override the prefix defaults: start, end, status,
+#                 current, runtime, errors (a list: a non-empty value means WARN)
+#   container     exact `docker run --name`; running = RUNNING, never CRASHED
+#   cron_match    substring of the crontab command; gives schedule, log, CRON_OFF
+#   cadence_hours expected time between two runs; beyond 1.25x + grace_hours = STALE
+#                 (omit for manual or on-demand jobs: they are never STALE)
+#   max_runtime_hours  running longer than this = LONG
+#   end_from_runtime   no end variable: finished once totalruntime is not "RUNNING"
+#   log_only      no server variable at all: the log's mtime dates the last run
+#   log           a line of ops/extra-logs.txt, read instead of the cron log
+#   log_ok_pattern     regex one of the last lines of the log must match, else WARN
+#   log_tail_window    how many final log lines the two log checks look at (15)
+#   log_errors_warn    false = error lines in the log never raise WARN
+#   on_demand     started by hand (a trigger file): schedule shows "on demand"
+#   resume, doc   shown on a CRASHED / FAILED card: how to restart, where to read
+#
+# Cron hours are UTC (the host clock); server-variable times are naive Paris.
+
+thresholds:
+  disk_amber: 85
+  disk_red: 95
+
+tls_hosts:
+  - vaugouin.com
+  - www.vaugouin.com
+  - dl.vaugouin.com
+  - kashia.fr
+
+# Lines of the crontab that are not tasks to judge.
+cron_ignore:
+  - data-monitoring/data-monitoring.sh   # this page itself: if it does not run, the page date says so
+
+tasks:
+  # --- Acquisition -------------------------------------------------------------
+  - slug: tmdb-crawler
+    label: tmdb-crawler
+    group: Acquisition
+    repo: tmdb-crawler
+    description: TMDb daily ID files, changes and full re-crawls. Relaunched every 5 min, resumes where it stopped.
+    prefix: strtmdbcrawler
+    container: tmdb-crawler
+    cron_match: tmdb-crawler/tmdb-crawler.sh
+    cadence_hours: 36
+    max_runtime_hours: 30
+
+  - slug: imdb-crawler
+    label: imdb-crawler
+    group: Acquisition
+    repo: imdb-crawler
+    description: IMDb datasets into MariaDB. Relaunched every 5 min.
+    prefix: strimdbcrawler
+    container: imdb-crawler
+    cron_match: imdb-crawler/imdb-crawler.sh
+    cadence_hours: 48
+    max_runtime_hours: 24
+
+  - slug: omdb-crawler
+    label: omdb-crawler
+    group: Acquisition
+    repo: omdb-crawler
+    description: One pass a day, capped by the OMDb free quota (1,000 calls per 24 h).
+    prefix: stromdbcrawler
+    container: omdb-crawler
+    cron_match: omdb-crawler/omdb-crawler.sh
+    cadence_hours: 24
+    max_runtime_hours: 20
+
+  - slug: wikipedia-crawler
+    label: wikipedia-crawler
+    group: Acquisition
+    repo: wikipedia-crawler
+    description: Wikipedia pages and sections per content family. Relaunched every 5 min; skips while a snapshot ingest runs.
+    prefix: strwikipediacrawler
+    container: wikipedia-crawler
+    cron_match: wikipedia-crawler/wikipedia-crawler.sh
+    cadence_hours: 72
+    max_runtime_hours: 96
+
+  - slug: wikipedia-snapshot-check
+    label: Wikipedia snapshot check
+    group: Acquisition
+    repo: wikipedia-crawler
+    description: Daily 06:41 UTC check for a new Wikimedia Enterprise snapshot (monthly, around the 1st).
+    cron_match: wikipedia-crawler/run-if-new-snapshot.sh
+    log_only: true
+    cadence_hours: 24
+    grace_hours: 4
+
+  - slug: wikipedia-snapshot-ingest
+    label: Wikipedia snapshot ingest
+    group: Acquisition
+    repo: wikipedia-crawler
+    description: The monthly ingest itself, started by the check above. Its tee'd log survives the container.
+    container: wikipedia-dump-ingest
+    log: /home/debian/docker/wikipedia-crawler/dumpdata/ingest-auto-*.log
+    log_only: true
+    log_tail_window: 25
+    cadence_hours: 840
+    grace_hours: 72
+    max_runtime_hours: 72
+
+  - slug: sqlite-plex-to-tmdb
+    label: sqlite-plex-to-tmdb
+    group: Acquisition
+    repo: sqlite-plex-to-tmdb
+    description: Plex library matched to TMDb. On demand only (start-process.txt), never STALE.
+    vars:
+      start: strsqliteplexrenoirdbstartdatetime
+      end: strsqliteplexrenoirdbenddatetime
+      current: strsqliteplexrenoirdbcurrentprocess
+    container: sqlite
+    on_demand: true
+    cron_match: sqlite-plex-to-tmdb/sqlite.sh
+    log: /home/debian/docker/shared_data/logs/sqlite-plex-to-tmdb/latest.log
+    log_ok_pattern: "exited with status 0"
+    log_tail_window: 3
+    max_runtime_hours: 12
+
+  - slug: movieparadise
+    label: movieparadise
+    group: Acquisition
+    repo: movieparadise
+    description: Movieparadise pages to MySQL. On demand only (start-process.txt). Its end time is written in a finally block, so a crash looks finished.
+    prefix: strcopymovieparadisetomysql
+    on_demand: true
+    container: movieparadise
+    cron_match: movieparadise/movieparadise.sh
+    max_runtime_hours: 12
+
+  # --- Wikidata -------------------------------------------------------------------
+  - slug: wikidata-dump-watcher
+    label: Wikidata dump watcher
+    group: Wikidata
+    repo: wikidata-crawler
+    description: Hourly run-if-new-dump.sh. Backs up a finished run, then starts the crawler when Wikimedia publishes a dump.
+    cron_match: wikidata-crawler/run-if-new-dump.sh
+    log_only: true
+    cadence_hours: 1
+    grace_hours: 2
+
+  - slug: wikidata-crawler
+    label: wikidata-crawler (dump load)
+    group: Wikidata
+    repo: wikidata-crawler
+    description: Steps 101-115, about 3-4 days per weekly dump. Step detail in the wikidata-etl-pipeline report.
+    prefix: strwikidatacrawler
+    vars:
+      status: strwikidatacrawlerstatus   # FAILURE = FAILED; lasterror is kept after a later success, so not read
+    container: wikidata-crawler
+    cron_match: wikidata-crawler/run-if-new-dump.sh
+    log_errors_warn: false
+    cadence_hours: 240
+    grace_hours: 48
+    max_runtime_hours: 120
+    doc: data-monitoring report wikidata-etl-pipeline; wikidata-crawler README (--start-step to resume)
+
+  # --- Preprocessing and semantic index -------------------------------------------
+  - slug: tmdb-person-preprocess
+    label: tmdb-person-preprocess
+    group: Preprocessing
+    repo: tmdb-person-preprocess
+    description: 00:15 UTC. About 1 min, 18 min for the weekly full pass. Must finish before tmdb-movie-preprocess.
+    prefix: strtmdbpersonpreprocess
+    container: tmdb-person-preprocess
+    cron_match: tmdb-person-preprocess/tmdb-person-preprocess.sh
+    cadence_hours: 24
+    max_runtime_hours: 2
+
+  - slug: tmdb-movie-preprocess
+    label: tmdb-movie-preprocess
+    group: Preprocessing
+    repo: tmdb-movie-preprocess
+    description: 01:00 UTC. TMDb + Wikidata into the T2S tables, about 1 h 30.
+    prefix: strtmdbmoviepreprocess
+    vars:
+      errors:
+        - strtmdbmoviepreprocessworkfinanceerror
+        - strtmdbmoviepreprocesssourceworkerror
+        - strtmdbmoviepreprocesslocationerror
+        - strtmdbmoviepreprocessgroupworkerror
+    container: tmdb-movie-preprocess
+    cron_match: tmdb-movie-preprocess/tmdb-movie-preprocess.sh
+    cadence_hours: 24
+    max_runtime_hours: 5
+    resume: "cd ~/docker/tmdb-movie-preprocess && ./tmdb-movie-preprocess.sh <failed process number>"
+    doc: tmdb-movie-preprocess README, section "Resume after a crash"
+
+  - slug: embedding-update
+    label: embedding-update
+    group: Preprocessing
+    repo: embedding-update
+    description: Every 6 h. ChromaDB embeddings of new and changed entities. Writes no end time.
+    prefix: strembeddingupdate
+    vars:
+      current: strembeddingupdatecurrentcontent
+    end_from_runtime: true
+    container: embedding-update
+    cron_match: embedding-update/embedding-update.sh
+    cadence_hours: 6
+    grace_hours: 3
+    max_runtime_hours: 6
+
+  # --- Exports --------------------------------------------------------------------
+  - slug: selenium-tmdb
+    label: selenium-tmdb CSV export
+    group: Exports
+    repo: selenium-tmdb
+    description: 06:00 UTC. CSV export the PC fetches for TMDb edits.
+    prefix: strseleniumtmdb
+    container: selenium-tmdb
+    cron_match: selenium-tmdb/preprocess/selenium-tmdb.sh
+    cadence_hours: 24
+    max_runtime_hours: 2
+
+  - slug: tmdb-export
+    label: download-images CSV export
+    group: Exports
+    repo: download-images
+    description: 07:00 UTC. Image-table CSVs; dated by the newest file in download-images/csv.
+    container: tmdb-export
+    cron_match: download-images/tmdb-export.sh
+    log: "mtime:/home/debian/docker/download-images/csv/*"
+    log_only: true
+    cadence_hours: 24
+    max_runtime_hours: 2
+
+  # --- Maintenance ------------------------------------------------------------------
+  - slug: chromadb-ensure
+    label: ChromaDB watchdog
+    group: Maintenance
+    repo: chromadb
+    description: Every 2 min. Heartbeat of chromadb-server, restarts it when it fails.
+    cron_match: chromadb/chromadb-ensure.sh
+    log_only: true
+    log_ok_pattern: "OK|recovered"
+    log_tail_window: 2
+    cadence_hours: 0.1
+    grace_hours: 0.5
+
+  - slug: docker-cleanup
+    label: Docker cleanup
+    group: Maintenance
+    repo: tools
+    description: 00:00 UTC. Prunes stopped containers, images older than 72 h and the build cache.
+    cron_match: docker-cleanup.sh
+    log_only: true
+    cadence_hours: 24
+
+  - slug: text2sql-purge-uploads
+    label: fastapi-text2sql purge uploads
+    group: Maintenance
+    repo: fastapi-text2sql
+    description: 03:50 UTC. Deletes uploads older than 30 days. Hard-wired to the -green clone.
+    cron_match: purge-uploads.sh
+    log_only: true
+    cadence_hours: 24
+
+  - slug: text2sql-archive-logs
+    label: fastapi-text2sql archive logs
+    group: Maintenance
+    repo: fastapi-text2sql
+    description: Monthly, the 1st at 03:30 UTC. Hard-wired to the -green clone.
+    cron_match: archive-logs.sh
+    log_only: true
+    cadence_hours: 744
+    grace_hours: 48
+
+  - slug: tls-renewal
+    label: TLS certificate renewal
+    group: Maintenance
+    repo: letsencrypt
+    description: Root crontab, 00:00 and 12:00 UTC. Certificates of vaugouin.com, dl.vaugouin.com, kashia.fr.
+    log: /home/debian/docker/letsencrypt/renewal.log
+    log_only: true
+    cadence_hours: 12
+    grace_hours: 12
+
+  # --- Backups ----------------------------------------------------------------------
+  - slug: backup-t2s
+    label: Sunday backup, T2S database
+    group: Backups
+    repo: tools
+    description: Sunday 04:30 UTC.
+    cron_match: tools/backupvaugouindb-t2s.sh
+    log_only: true
+    cadence_hours: 168
+    grace_hours: 24
+
+  - slug: backup-chromadb
+    label: Sunday backup, ChromaDB
+    group: Backups
+    repo: tools
+    description: Sunday, right after the T2S backup.
+    cron_match: tools/backupchromadb.sh
+    log_only: true
+    cadence_hours: 168
+    grace_hours: 24
+
+  - slug: export-chromadb
+    label: Sunday export, ChromaDB
+    group: Backups
+    repo: tools
+    description: Sunday 02:30 UTC.
+    cron_match: tools/exportchromadb.sh
+    log_only: true
+    cadence_hours: 168
+    grace_hours: 24
+
+# Containers that must always run. `any_of`: one of them is enough (blue/green).
+# `optional: true`: absent = OFF (grey), not DOWN. Names from the migration doc; a
+# wrong name shows as DOWN "no such container", and the real name then appears under
+# "Other containers": fix it here.
+services:
+  - {slug: reverseproxy, label: NGINX reverse proxy, container: reverseproxy}
+  - {slug: frontend, label: Website (Apache), container: frontend-vaugouin-com}
+  - {slug: php-fpm, label: Website (PHP-FPM), container: damp-vaugouin-com-php-fpm-1}
+  - {slug: mariadb, label: MariaDB, container: damp-vaugouin-com-mariadb-1}
+  - {slug: phpmyadmin, label: phpMyAdmin, container: phpmyadmin-vaugouin, optional: true}
+  - {slug: chromadb, label: ChromaDB, container: chromadb-server}
+  - slug: fastapi-text2sql
+    label: Text2SQL API and MCP
+    any_of: [fastapi-text2sql-blue, fastapi-text2sql-green, fastapi-text2sql]
+    description: No restart policy, nothing restarts it.
+  - {slug: voice-agent, label: Voice agent, container: voice-agent}
+  - {slug: wordpress, label: kashia.fr WordPress, container: wordpress-wordpress-1}
+  - {slug: wordpress-db, label: kashia.fr database, container: wordpress-db-1}
+  - {slug: t2s-web, label: t2s-web, container: t2s-web, optional: true}
+  - {slug: pipeline-3d, label: pipeline-3d, container: pipeline-3d, optional: true}
+  - {slug: pipeline-3d-api, label: pipeline-3d API, container: pipeline-3d-api, optional: true}

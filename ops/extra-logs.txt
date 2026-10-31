@@ -1,0 +1,16 @@
+# Files the host collector (collect_host.py) reads besides the logs the crontab
+# redirects to. One path or glob per line; for a glob, the newest match is read.
+# "mtime:<glob>" records only the newest file's time and size (data files, not logs).
+# A task points at one of these lines with `log:` in ops/tasks.yaml (same text).
+
+# sqlite-plex-to-tmdb keeps the Python output of each run (ends with "=== exited with status N ===")
+/home/debian/docker/shared_data/logs/sqlite-plex-to-tmdb/latest.log
+
+# Wikipedia snapshot ingest: one tee'd log per run, survives the container
+/home/debian/docker/wikipedia-crawler/dumpdata/ingest-auto-*.log
+
+# TLS renewal, run by the ROOT crontab (invisible to `crontab -l` as debian)
+/home/debian/docker/letsencrypt/renewal.log
+
+# download-images/tmdb-export writes CSV files; their time is the proof of a run
+mtime:/home/debian/docker/download-images/csv/*

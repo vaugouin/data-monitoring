@@ -9,9 +9,27 @@ comments carry its modelling details and caveats.
 
 Observability stage of the Agent BBB ecosystem (roster:
 `%USERPROFILE%/Nestor/projets/t2s-backlog/topics/related-repositories.txt`): campaign
-trend, completion and ETA, never realtime liveness (that is `srvvar.php`). It is
+trend, completion and ETA, never realtime liveness (that is `srvvar.php`), plus the
+daily ops dashboard of the automated tasks (a morning checkpoint, not a live console). It is
 deliberately absent from the entity pipeline template
 `%USERPROFILE%/Nestor/projets/t2s-backlog/topics/groups-multi-repo-management.md`.
+
+## Ops dashboard (`ops.py`, since 2026-10-31)
+
+The morning health page of every automated task (README § Ops dashboard). Pieces:
+`collect_host.py` (runs on the HOST, stdlib only, Python 3.10-compatible), `ops.py`
+(verdicts), `render_ops.py` (HTML), `ops/tasks.yaml` (registry), `ops/extra-logs.txt`.
+
+- A new cron job, launcher or always-on container on the VPS gets an entry in
+  `ops/tasks.yaml` in the same change (same rule as a tracking metric for a new feature).
+- A job that changes its server-variable names, container name, cron line or log path
+  breaks its verdict silently into UNKNOWN or STALE: update the registry with it.
+- The ops dashboard must never take the coverage reports down: `run_ops` is wrapped in
+  `main()`; keep it that way.
+- Log tails are shown on a password-protected page: `collect_host.py` masks secrets
+  (`_mask`). Never add a probe that dumps an `.env` or a container's environment.
+- Test offline with a fake connection and a synthetic `host.json` (no `--sample` mode
+  for ops yet); validate the host side on the VPS with `./data-monitoring.sh --ops-only`.
 
 ## Rules
 

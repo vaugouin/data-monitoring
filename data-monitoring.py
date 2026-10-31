@@ -341,13 +341,18 @@ def write_artifacts(report, results, run_dt, db_label):
     return fname
 
 
-def write_index(report_files, run_dt):
-    """A tiny landing page linking the day's reports, plus a stable latest copy."""
+def write_index(report_files, run_dt, ops_file=None):
+    """A tiny landing page linking the day's reports, plus a stable latest copy.
+
+    The ops dashboard (automated tasks) comes first: it is the morning page."""
     stamp = run_dt.strftime("%Y%m%d")
     generated_at = run_dt.strftime("%Y-%m-%d %H:%M %z")
     links = "\n".join(
         f'<li><a href="{f}">{f}</a></li>' for f in sorted(report_files)
     )
+    if ops_file:
+        links = (f'<li><a href="ops-latest.html"><b>Automated tasks (ops dashboard)</b></a>'
+                 f' · <a href="{ops_file}">{ops_file}</a></li>\n' + links)
     doc = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -372,7 +377,7 @@ def prune(run_dt):
         return
     cutoff = run_dt.timestamp() - RETENTION_DAYS * 86400
     for path in glob.glob(os.path.join(OUTPUT_DIR, "*.html")):
-        if os.path.basename(path).startswith("index-latest"):
+        if os.path.basename(path).endswith("-latest.html"):
             continue
         if os.path.getmtime(path) < cutoff:
             try:
@@ -986,6 +991,9 @@ def main():
     ap.add_argument("--sample", action="store_true", help="render a seeded sample, no DB")
     ap.add_argument("--print-sql", action="store_true",
                     help="print each metric's resolved SQL and exit, no DB")
+    ap.add_argument("--ops-only", action="store_true",
+                    help="refresh only the ops dashboard (automated tasks), not the reports")
+    ap.add_argument("--no-ops", action="store_true", help="skip the ops dashboard")
     args = ap.parse_args()
 
     if args.sample:
@@ -998,6 +1006,15 @@ def main():
 
     import db
     run_dt = _now()
+
+    if args.ops_only:
+        conn = db.get_connection()
+        try:
+            run_ops(conn, run_dt)
+        finally:
+            conn.close()
+        return
+
     manifests = _find_manifests(args.report)
 
     # Fail loudly rather than emit an empty index - a missing reports/ dir in the
@@ -1018,11 +1035,43 @@ def main():
             print(f"report '{manifest['slug']}': {len(results)} metrics")
             for r in results:
                 print(f"  {r['key']}: {r['done']}/{r['expected']} = {r['pct']}%")
+        ops_file = None
+        if not args.no_ops and not args.report:
+            # The ops dashboard must never take the coverage reports down with it.
+            try:
+                ops_file = run_ops(conn, run_dt)
+            except Exception as exc:  # noqa: BLE001
+                import traceback
+                traceback.print_exc()
+                print(f"ops dashboard FAILED: {exc}", file=sys.stderr)
     finally:
         conn.close()
 
-    write_index(written, run_dt)
+    write_index(written, run_dt, ops_file)
     prune(run_dt)
+
+
+def run_ops(conn, run_dt):
+    """Build and write the ops dashboard: ops-YYYYMMDD.html + ops-latest.html."""
+    import ops
+    import render_ops
+    data = ops.build(conn, run_dt)
+    data["retention"] = RETENTION_DAYS
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    stamp = run_dt.strftime("%Y%m%d")
+    fname = f"ops-{stamp}.html"
+    pages = {os.path.basename(p) for p in glob.glob(os.path.join(OUTPUT_DIR, "ops-2*.html"))}
+    pages.add(fname)
+    nav = render._day_nav_bar(_day_nav("ops", run_dt, OUTPUT_DIR))
+    doc = render_ops.render(data, run_dt.strftime("%Y-%m-%d %H:%M %z"), nav, pages)
+    for name in (fname, "ops-latest.html"):
+        with open(os.path.join(OUTPUT_DIR, name), "w", encoding="utf-8") as fh:
+            fh.write(doc)
+    counts = {}
+    for t in data["tasks"] + data["services"]:
+        counts[t["verdict"]] = counts.get(t["verdict"], 0) + 1
+    print(f"ops dashboard: {fname} - " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    return fname
 
 
 if __name__ == "__main__":

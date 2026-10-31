@@ -9,6 +9,10 @@ This answers *"how far along is the campaign, how fast is it going, when will it
 finish"* - distinct from `tmdb-front`'s `srvvar.php`, which tracks realtime process
 liveness.
 
+It also builds the **ops dashboard** (`ops-latest.html`), the morning check of every
+automated task on the VPS: did each crawler, preprocessor, backup and export run, finish,
+crash or silently stop, and are the services up. See [Ops dashboard](#ops-dashboard-automated-tasks).
+
 ## How it works
 
 - A **report** is a manifest `reports/<slug>.yaml`: a bundle of metrics, each with a
@@ -56,6 +60,8 @@ python data-monitoring.py                      # all reports in reports/
 python data-monitoring.py --report tmdb-tv-coverage
 python data-monitoring.py --sample             # seeded samples → samples/, no DB
 python data-monitoring.py --print-sql          # resolved SQL of every metric, no DB
+python data-monitoring.py --ops-only           # refresh only the ops dashboard
+python data-monitoring.py --no-ops             # reports only
 ```
 
 `--print-sql` is the pre-flight check for a new manifest: it substitutes `params:`,
@@ -121,6 +127,88 @@ numeric offset, e.g. `2026-10-19 08:30 +0200`.
 
 Output dir `shared_data/data-monitoring/` is mirrored to the NAS by
 `sync_vps_docker.py` before the 30-day prune, so expiring HTML is archived first.
+
+## Ops dashboard (automated tasks)
+
+**URL:** `https://www.vaugouin.com/data-monitoring/ops-latest.html` (same password as
+the reports). Each day's page is `ops-YYYYMMDD.html`, with the same prev/next-day bar as
+the reports, so you can walk back to the morning after any night.
+
+It answers one question each morning: *did the night go well, and if not, what do I
+investigate?* The top line says it in one sentence (all good / N to look at / N problems),
+then **Needs attention** lists only what is red or amber, each card with what is known:
+start, finish, last process, error variables, the tail of its log, and how to resume.
+
+### Sources
+
+1. **Server variables** (`T_WC_SERVER_VARIABLE`). Almost every job writes
+   `<prefix>startdatetime` at start, `<prefix>totalruntime = "RUNNING"`, and on a
+   normal end `<prefix>enddatetime` plus a duration. Nothing is written on a crash, so
+   *start after end, or totalruntime still RUNNING, with no container running* is the
+   crash signature.
+2. **The host**, through `collect_host.py`. The container sees neither the crontab, nor
+   the cron logs, nor Docker, so `data-monitoring.sh` runs this standard-library script
+   **on the host** (system `python3`) before `docker run`. It writes
+   `hostops/host.json` (git-ignored, mounted read-only at `/hostops`): the crontab
+   (active and commented lines, each job's log, its `CRON_OFF` flag), the last 60 lines
+   of each log with secrets masked and the error-looking lines, `docker ps -a` +
+   `docker inspect` (state, exit code, OOM kill, restart count, health), 24 h of logs of
+   running containers, disk, memory, load, uptime, failed systemd units, reboot flag.
+   `ops/extra-logs.txt` adds logs no crontab line names (the root crontab's TLS renewal,
+   the sqlite run log, the Wikipedia ingest log, the CSV export folder).
+3. **The registry** `ops/tasks.yaml`: each task's prefix or variables, container, cron
+   line, cadence and maximum runtime, and the services that must stay up. Its header
+   documents every field. **A new job is a new entry, not new code.**
+
+Plus, from the container: MariaDB uptime (`SHOW GLOBAL STATUS`) and the TLS certificate
+expiry of the public hosts.
+
+### Verdicts
+
+| Verdict | Meaning |
+|---|---|
+| CRASHED | started, never finished, container gone: read its log |
+| FAILED | the job reported a failure (status variable, non-zero container exit) |
+| DOWN | a service that must run is not running, or is unhealthy |
+| STALE | no run within 1.25 x its cadence + grace: cron missed, or the launcher refused |
+| WARN | finished, but an error variable is set, its log ends on error lines, or a service restarted |
+| LONG | still running, beyond its usual maximum |
+| RUNNING / OK / OFF / UNKNOWN | running now / fine / switched off on purpose (`CRON_OFF`, commented line) / no trace found |
+
+Nothing new stays invisible: a crontab line no task claims is listed under *Other cron
+jobs* (and raised if its log ends on errors), and an unclaimed container that exited
+with an error in the last 36 h is raised as FAILED.
+
+### History
+
+Each verdict is upserted into `T_WC_DATA_MONITORING_SNAPSHOT` (`REPORT_SLUG = 'ops-health'`,
+`SOURCE_DB = 'OPS'`, `TABLE_NAME = 'task:<slug>'` or `'svc:<slug>'`, `METRIC_KEY =
+'ops_status'`, `DONE_COUNT` = verdict code, `EXPECTED_COUNT` = run duration in seconds,
+`LONG_DESC` = JSON with start, end, last process, notes). It feeds the 30-day strip of
+each row (each square links to that day's page) and outlives the 30-day HTML retention.
+Restart counts (`ops_restarts`) let the next morning see a service that restarted in
+between. Codes: OK 0, RUNNING 1, OFF 2, UNKNOWN 3, WARN 4, STALE 5, FAILED 6, CRASHED 7,
+DOWN 8, LONG 9. No DDL: it reuses the snapshot table and the `monitoring_ro` grants.
+
+### Refresh during the day
+
+The cron run at 06:30 UTC builds it with the reports. To refresh it alone, on the VPS:
+
+```sh
+cd ~/docker/data-monitoring && ./data-monitoring.sh --ops-only
+```
+
+A same-day refresh overwrites today's page and today's verdicts (idempotent upsert).
+
+### Known blind spots
+
+- Jobs launched with `docker run -d --rm` lose their Python output when they exit: the
+  cron log only holds the launcher's echo lines. The verdict comes from the server
+  variables; the full traceback is gone. sqlite-plex-to-tmdb (its own run log) and
+  the Wikipedia ingest (`tee`) are the exceptions.
+- movieparadise writes its end time in a `finally:` block, so a crash looks finished.
+- The root crontab is not readable as `debian`; the TLS renewal is followed through its
+  log and through the certificates' expiry dates.
 
 ## Reports
 

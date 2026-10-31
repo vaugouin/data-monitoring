@@ -16,17 +16,31 @@ if [ -f "$(dirname "$(readlink -f "$0")")/CRON_OFF" ]; then
     exit 0
 fi
 
-if [ "$(docker ps -q -f name=data-monitoring)" ]; then
+if [ -n "$(docker ps -q -f name=^data-monitoring$)" ]; then
     echo "data-monitoring container is already running."
 else
     # shared_data/data-monitoring is mounted at /shared (OUTPUT_DIR) and mirrored
     # to the NAS by sync_vps_docker.py before the 30-day prune removes old files.
     mkdir -p $HOME/docker/shared_data/data-monitoring
     cd $HOME/docker/data-monitoring
+    # Ops dashboard (ops.py): the container cannot see the host crontab, the cron logs
+    # or the Docker daemon, so collect_host.py gathers them HERE, on the host, with the
+    # system python3 (standard library only), into hostops/host.json, mounted read-only.
+    # A failure only degrades the ops page (it says so at the top); the reports still run.
+    mkdir -p $HOME/docker/data-monitoring/hostops
+    if command -v python3 >/dev/null 2>&1; then
+        python3 $HOME/docker/data-monitoring/collect_host.py --docker-root $HOME/docker \
+            --out $HOME/docker/data-monitoring/hostops/host.json \
+            || echo "collect_host.py failed: the ops page will flag stale host data."
+    else
+        echo "python3 missing on the host: the ops page will flag missing host data."
+    fi
     docker build -t data-monitoring-python-app .
+    # "$@" passes options through, e.g. ./data-monitoring.sh --ops-only (refresh the ops page only).
     docker run --rm --network="host" --name data-monitoring \
         --env-file /home/debian/docker/data-monitoring/.env \
         -v $HOME/docker/shared_data/data-monitoring:/shared \
-        data-monitoring-python-app
+        -v $HOME/docker/data-monitoring/hostops:/hostops:ro \
+        data-monitoring-python-app python ./data-monitoring.py "$@"
     echo "data-monitoring run complete."
 fi

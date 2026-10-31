@@ -32,3 +32,6 @@ cron.log
 
 # Flag file written by off.sh, removed by on.sh: the scheduled task is switched off
 CRON_OFF
+
+# Ops dashboard: host data written by collect_host.py on the VPS (log tails, container states)
+hostops/
