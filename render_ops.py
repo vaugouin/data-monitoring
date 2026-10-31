@@ -97,6 +97,7 @@ def _attention_card(t, kind):
     if kind == "task" and t.get("doc"):
         lines.append(f'<div class="att-facts">Runbook: {e(t["doc"])}</div>')
     if kind == "task":
+        lines.append(_log_details(t.get("run_log"), "last run log"))
         lines.append(_log_details(t.get("log")))
     if kind == "service":
         c = t.get("container_info") or {}

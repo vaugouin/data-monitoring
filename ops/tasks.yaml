@@ -23,6 +23,9 @@
 #   log_ok_pattern     regex one of the last lines of the log must match, else WARN
 #   log_tail_window    how many final log lines the two log checks look at (15)
 #   log_errors_warn    false = error lines in the log never raise WARN
+#   run_log       folder name under shared_data/logs/ (f_runlogged in the launcher): the
+#                 full output of the last run; "exited with status N>0" = FAILED, and its
+#                 start/exit stamps date a job that writes no server variable
 #   on_demand     started by hand (a trigger file): schedule shows "on demand"
 #   resume, doc   shown on a CRASHED / FAILED card: how to restart, where to read
 #
@@ -51,6 +54,7 @@ tasks:
     description: TMDb daily ID files, changes and full re-crawls. Relaunched every 5 min, resumes where it stopped.
     prefix: strtmdbcrawler
     container: tmdb-crawler
+    run_log: tmdb-crawler
     cron_match: tmdb-crawler/tmdb-crawler.sh
     cadence_hours: 36
     max_runtime_hours: 30
@@ -62,6 +66,7 @@ tasks:
     description: IMDb datasets into MariaDB. Relaunched every 5 min.
     prefix: strimdbcrawler
     container: imdb-crawler
+    run_log: imdb-crawler
     cron_match: imdb-crawler/imdb-crawler.sh
     cadence_hours: 48
     max_runtime_hours: 24
@@ -73,6 +78,7 @@ tasks:
     description: One pass a day, capped by the OMDb free quota (1,000 calls per 24 h).
     prefix: stromdbcrawler
     container: omdb-crawler
+    run_log: omdb-crawler
     cron_match: omdb-crawler/omdb-crawler.sh
     cadence_hours: 24
     max_runtime_hours: 20
@@ -84,6 +90,7 @@ tasks:
     description: Wikipedia pages and sections per content family. Relaunched every 5 min; skips while a snapshot ingest runs.
     prefix: strwikipediacrawler
     container: wikipedia-crawler
+    run_log: wikipedia-crawler
     cron_match: wikipedia-crawler/wikipedia-crawler.sh
     cadence_hours: 72
     max_runtime_hours: 96
@@ -120,22 +127,25 @@ tasks:
       start: strsqliteplexrenoirdbstartdatetime
       end: strsqliteplexrenoirdbenddatetime
       current: strsqliteplexrenoirdbcurrentprocess
+      runtime: strsqliteplexrenoirdbtotalruntime
+      status: strsqliteplexrenoirdbtotalruntime   # "FAILED: ..." on a caught MySQL error
     container: sqlite
+    run_log: sqlite-plex-to-tmdb
     on_demand: true
     cron_match: sqlite-plex-to-tmdb/sqlite.sh
-    log: /home/debian/docker/shared_data/logs/sqlite-plex-to-tmdb/latest.log
-    log_ok_pattern: "exited with status 0"
-    log_tail_window: 3
     max_runtime_hours: 12
 
   - slug: movieparadise
     label: movieparadise
     group: Acquisition
     repo: movieparadise
-    description: Movieparadise pages to MySQL. On demand only (start-process.txt). Its end time is written in a finally block, so a crash looks finished.
+    description: Movieparadise pages to MySQL. On demand only (start-process.txt).
     prefix: strcopymovieparadisetomysql
+    vars:
+      status: strcopymovieparadisetomysqltotalruntime   # "FAILED: ..." on a caught MySQL error
     on_demand: true
     container: movieparadise
+    run_log: movieparadise
     cron_match: movieparadise/movieparadise.sh
     max_runtime_hours: 12
 
@@ -159,6 +169,7 @@ tasks:
     vars:
       status: strwikidatacrawlerstatus   # FAILURE = FAILED; lasterror is kept after a later success, so not read
     container: wikidata-crawler
+    run_log: wikidata-crawler
     cron_match: wikidata-crawler/run-if-new-dump.sh
     log_errors_warn: false
     cadence_hours: 240
@@ -174,6 +185,7 @@ tasks:
     description: 00:15 UTC. About 1 min, 18 min for the weekly full pass. Must finish before tmdb-movie-preprocess.
     prefix: strtmdbpersonpreprocess
     container: tmdb-person-preprocess
+    run_log: tmdb-person-preprocess
     cron_match: tmdb-person-preprocess/tmdb-person-preprocess.sh
     cadence_hours: 24
     max_runtime_hours: 2
@@ -191,6 +203,7 @@ tasks:
         - strtmdbmoviepreprocesslocationerror
         - strtmdbmoviepreprocessgroupworkerror
     container: tmdb-movie-preprocess
+    run_log: tmdb-movie-preprocess
     cron_match: tmdb-movie-preprocess/tmdb-movie-preprocess.sh
     cadence_hours: 24
     max_runtime_hours: 5
@@ -207,6 +220,7 @@ tasks:
       current: strembeddingupdatecurrentcontent
     end_from_runtime: true
     container: embedding-update
+    run_log: embedding-update
     cron_match: embedding-update/embedding-update.sh
     cadence_hours: 6
     grace_hours: 3
@@ -220,6 +234,7 @@ tasks:
     description: 06:00 UTC. CSV export the PC fetches for TMDb edits.
     prefix: strseleniumtmdb
     container: selenium-tmdb
+    run_log: selenium-tmdb
     cron_match: selenium-tmdb/preprocess/selenium-tmdb.sh
     cadence_hours: 24
     max_runtime_hours: 2
@@ -228,11 +243,11 @@ tasks:
     label: download-images CSV export
     group: Exports
     repo: download-images
-    description: 07:00 UTC. Image-table CSVs; dated by the newest file in download-images/csv.
+    description: 07:00 UTC. Image-table CSVs (no server variable; dated by its run log).
     container: tmdb-export
+    run_log: tmdb-export
     cron_match: download-images/tmdb-export.sh
     log: "mtime:/home/debian/docker/download-images/csv/*"
-    log_only: true
     cadence_hours: 24
     max_runtime_hours: 2
 

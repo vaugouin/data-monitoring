@@ -155,7 +155,8 @@ start, finish, last process, error variables, the tail of its log, and how to re
    `docker inspect` (state, exit code, OOM kill, restart count, health), 24 h of logs of
    running containers, disk, memory, load, uptime, failed systemd units, reboot flag.
    `ops/extra-logs.txt` adds logs no crontab line names (the root crontab's TLS renewal,
-   the sqlite run log, the Wikipedia ingest log, the CSV export folder).
+   the Wikipedia ingest log, the CSV export folder), and every run log under
+   `shared_data/logs/` is read too (see Run logs below).
 3. **The registry** `ops/tasks.yaml`: each task's prefix or variables, container, cron
    line, cadence and maximum runtime, and the services that must stay up. Its header
    documents every field. **A new job is a new entry, not new code.**
@@ -200,13 +201,24 @@ cd ~/docker/data-monitoring && ./data-monitoring.sh --ops-only
 
 A same-day refresh overwrites today's page and today's verdicts (idempotent upsert).
 
+### Run logs (since 2026-10-31)
+
+Every detached batch launcher now runs its container through `f_runlogged` (a function
+at the top of each `.sh`): the container's whole output goes to
+`shared_data/logs/<process>/<YYYYMMDD-HHMMSS>.log` (30 days) and `latest.log`, ending
+with `=== <process> exited with status N at <UTC date> ===`. The collector reads every
+`latest.log`; a task's `run_log:` points at its folder. A non-zero status turns the task
+FAILED and its card shows the traceback. Read one by hand on the VPS:
+
+```sh
+tail -n 100 ~/docker/shared_data/logs/tmdb-movie-preprocess/latest.log
+```
+
 ### Known blind spots
 
-- Jobs launched with `docker run -d --rm` lose their Python output when they exit: the
-  cron log only holds the launcher's echo lines. The verdict comes from the server
-  variables; the full traceback is gone. sqlite-plex-to-tmdb (its own run log) and
-  the Wikipedia ingest (`tee`) are the exceptions.
-- movieparadise writes its end time in a `finally:` block, so a crash looks finished.
+- Services (`fastapi-text2sql`, `synthetic-images-lab`, `voice-agent`...) keep their
+  Docker logs while they run, and the dashboard reads 24 h of them; a service started
+  with `--rm` loses them when it stops.
 - The root crontab is not readable as `debian`; the TLS renewal is followed through its
   log and through the certificates' expiry dates.
 

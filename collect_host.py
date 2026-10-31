@@ -166,6 +166,22 @@ def _cron_entry(schedule, command, commented):
     return entry
 
 
+def collect_run_logs(docker_root):
+    """The last run log of every process following the VPS-wide convention
+    shared_data/logs/<process>/latest.log (f_runlogged in each launcher): the full
+    output of the container, ending with "=== <process> exited with status N ===".
+    Keyed by process name."""
+    import glob as _glob
+    out = {}
+    for link in sorted(_glob.glob(os.path.join(docker_root, "shared_data", "logs", "*", "latest.log"))):
+        process = os.path.basename(os.path.dirname(link))
+        target = os.path.realpath(link)
+        info = _log_info(target)
+        if info.get("exists"):
+            out[process] = info
+    return out
+
+
 def collect_extra_logs(listfile):
     """Logs no crontab line redirects to (a job's own run log, the root crontab's
     TLS renewal log...), listed one path or glob per line in ops/extra-logs.txt.
@@ -291,7 +307,8 @@ def main():
     extra = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ops", "extra-logs.txt")
     for key, fn in (("crontab", collect_crontab), ("docker", collect_docker),
                     ("host", lambda: collect_host(args.docker_root)),
-                    ("extra_logs", lambda: collect_extra_logs(extra))):
+                    ("extra_logs", lambda: collect_extra_logs(extra)),
+                    ("run_logs", lambda: collect_run_logs(args.docker_root))):
         try:
             result[key] = fn()
         except Exception as exc:  # keep the other sections

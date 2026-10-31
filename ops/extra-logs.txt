@@ -3,8 +3,8 @@
 # "mtime:<glob>" records only the newest file's time and size (data files, not logs).
 # A task points at one of these lines with `log:` in ops/tasks.yaml (same text).
 
-# sqlite-plex-to-tmdb keeps the Python output of each run (ends with "=== exited with status N ===")
-/home/debian/docker/shared_data/logs/sqlite-plex-to-tmdb/latest.log
+# The run logs of shared_data/logs/<process>/latest.log need no line here: the collector
+# reads them all (tasks point at them with `run_log:`).
 
 # Wikipedia snapshot ingest: one tee'd log per run, survives the container
 /home/debian/docker/wikipedia-crawler/dumpdata/ingest-auto-*.log

@@ -220,7 +220,36 @@ def _task_log(task, cron, extra_logs):
     return (cron or {}).get("log") or {}
 
 
-def evaluate_task(task, vars_, cron_entries, containers, now, extra_logs=None):
+RUN_EXIT_RE = re.compile(r"=== (\S+) exited with status (\d+) at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+RUN_START_RE = re.compile(r"=== (\S+) started (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+
+
+def parse_run_log(info):
+    """(started, exited, status) of a run log written by f_runlogged; None when absent.
+    The stamps are the host clock (UTC on the VPS), so they serve to date a job that
+    writes no server variable, and the status serves everywhere."""
+    if not info or not info.get("exists"):
+        return None, None, None
+    started = exited = status = None
+    for line in info.get("tail") or []:
+        m = RUN_START_RE.search(line)
+        if m:
+            started = m.group(2)
+        m = RUN_EXIT_RE.search(line)
+        if m:
+            exited, status = m.group(3), int(m.group(2))
+    return started, exited, status
+
+
+def _utc_to_paris(s):
+    if not s:
+        return None
+    import pytz
+    dt = datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+    return pytz.utc.localize(dt).astimezone(_paris()).replace(tzinfo=None)
+
+
+def evaluate_task(task, vars_, cron_entries, containers, now, extra_logs=None, run_logs=None):
     names = _task_var_names(task)
 
     def val(key):
@@ -258,6 +287,17 @@ def evaluate_task(task, vars_, cron_entries, containers, now, extra_logs=None):
             end = parse_iso_to_paris(container.get("finished_at"))
 
     log = _task_log(task, cron, extra_logs or {})
+    # The full output of the last run (launchers using f_runlogged since 2026-10-31).
+    run_log = (run_logs or {}).get(task.get("run_log")) if task.get("run_log") else None
+    rl_started, rl_exited, rl_status = parse_run_log(run_log)
+    rl_mtime = parse_iso_to_paris(run_log.get("mtime")) if run_log and run_log.get("mtime") else None
+    if start is None and rl_started:
+        start = _utc_to_paris(rl_started)
+        if rl_exited and not running:
+            end = _utc_to_paris(rl_exited)
+    # The run log belongs to the last run when it was written after that run started
+    # (10 min of slack: the log is created a few seconds before Python starts).
+    rl_current = bool(run_log and (start is None or (rl_mtime and rl_mtime >= start - datetime.timedelta(minutes=10))))
     log_mtime = parse_iso_to_paris(log.get("mtime")) if log.get("mtime") else None
     # Jobs that write no server variable at all (backups, exports, watchdogs) are
     # dated by their log: the file is touched at every run.
@@ -303,6 +343,10 @@ def evaluate_task(task, vars_, cron_entries, containers, now, extra_logs=None):
         verdict = "LONG" if duration and duration > max_run_h * 3600 else "RUNNING"
     elif status_failed:
         verdict = "FAILED"
+    elif rl_current and rl_status:
+        verdict = "FAILED"
+        notes.append(f"its run log ends with exit status {rl_status}"
+                     + (" (137 = killed, often out of memory)" if rl_status == 137 else ""))
     elif (start and not finished and not task.get("no_end_marker")) or runtime_stuck:
         verdict = "CRASHED"
         if runtime_stuck:
@@ -361,7 +405,8 @@ def evaluate_task(task, vars_, cron_entries, containers, now, extra_logs=None):
         "status": status, "current": current, "runtime": runtime,
         "errors": error_vals, "notes": notes, "running": running,
         "container": cname, "container_info": container,
-        "cron": cron, "log": log, "cadence_hours": cadence_h, "last": last,
+        "cron": cron, "log": log, "run_log": run_log, "run_status": rl_status,
+        "cadence_hours": cadence_h, "last": last,
         "doc": task.get("doc"), "resume": task.get("resume"),
         "on_demand": task.get("on_demand", False),
     }
@@ -598,7 +643,8 @@ def build(conn, run_dt, persist_snapshot=True):
 
     vars_ = fetch_variables(conn, wanted_variables(registry))
     extra_logs = host.get("extra_logs") or {}
-    tasks = [evaluate_task(t, vars_, entries, containers, now, extra_logs)
+    run_logs = host.get("run_logs") or {}
+    tasks = [evaluate_task(t, vars_, entries, containers, now, extra_logs, run_logs)
              for t in registry.get("tasks") or []]
     tasks.sort(key=lambda t: (VERDICTS[t["verdict"]]["rank"], t["group"], t["label"]))
     prev = previous_restarts(conn, run_dt.date())
