@@ -1,5 +1,9 @@
 # AGENTS.md - Agent Guide for data-monitoring
 
+## Canary
+
+Start every reply with "Philippe,": no exceptions, including short replies and tool summaries.
+
 Single canonical guide for autonomous coding agents in this repo. `CLAUDE.md` (and
 any future `GEMINI.md`) only point here. What the tool does, how it runs, the manifest
 format, setup, deployment and every report: @README.md. Each manifest's header
