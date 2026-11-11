@@ -272,6 +272,24 @@ distinct from TV network metadata, season-level availability and cinema showtime
 As with release dates, provider rows are replace-in-place snapshots. The report does
 not derive a historical availability timeline from child-table `DAT_CREAT` values.
 
+### `tmdb-social-ids-coverage`
+
+Backfill, field by field, of the social-network ids that tmdb-crawler 1.0.12 keeps from
+TMDb's `external_ids` (since 2026-11-11): `FACEBOOK_ID`, `INSTAGRAM_ID`, `TWITTER_ID` on
+persons, movies and series, plus `TIKTOK_ID` and `YOUTUBE_ID` on persons, and
+`TIM_EXTERNAL_IDS`, the time they were read.
+
+- `social_ids_ddl` checks the 14 columns in `information_schema` before anything else.
+- `person_external_ids_read`, `movie_external_ids_read`, `serie_external_ids_read` are
+  the backfill: live rows with `TIM_EXTERNAL_IDS` set. No dedicated process fills them;
+  they grow with the 30-day refresh and should near 100 % about a month after
+  2026-11-11.
+- `<entity>_<network>_id_fill` (11 metrics) is the share of the rows already read that
+  carry that id. An empty string after a read means TMDb has none, so these rates have
+  no 100 % to reach and show no ETA.
+- `social_ids_read_with_null` (alert_zero): a read row must never hold a `NULL` id,
+  otherwise "TMDb has none" and "not read" become indistinguishable.
+
 ### `wikipedia-content-md-backfill`
 
 Backfill of the richer Wikipedia content (Nestor topic `wikipedia-rich-sections`, DDL applied

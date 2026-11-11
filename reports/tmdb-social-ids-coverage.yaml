@@ -1,0 +1,246 @@
+# data-monitoring report manifest - TMDb social-network ids (external_ids).
+#
+# tmdb-crawler 1.0.12 (TMDB-CRAWLER-035, 2026-11-11) keeps the social-network ids of
+# TMDb's external_ids, which every details call already fetched:
+#   T_WC_TMDB_PERSON : FACEBOOK_ID, INSTAGRAM_ID, TWITTER_ID, TIKTOK_ID, YOUTUBE_ID
+#   T_WC_TMDB_MOVIE  : FACEBOOK_ID, INSTAGRAM_ID, TWITTER_ID
+#   T_WC_TMDB_SERIE  : FACEBOOK_ID, INSTAGRAM_ID, TWITTER_ID
+# plus TIM_EXTERNAL_IDS, the time they were read, on the three tables.
+#
+# THREE STATES, NOT TWO
+# ---------------------
+#   TIM_EXTERNAL_IDS NULL       -> row not refreshed since 1.0.12 (not read yet)
+#   TIM_EXTERNAL_IDS set, ''    -> read, TMDb has no such id (not a crawler miss)
+#   TIM_EXTERNAL_IDS set, value -> read, TMDb carries the id
+# The crawler writes every column of the entity together with TIM_EXTERNAL_IDS
+# (f_tmdbsocialcouples), so a read row never holds a NULL id: the alert_zero
+# metric below guards that.
+#
+# BACKFILL CADENCE
+# ----------------
+# No dedicated backfill process: the columns fill as the 30-day refresh (Processes
+# 22, 24, 28), the /changes feed (51-53) and the Wikidata repair passes (23, 29-30)
+# re-read each row. Read coverage should approach 100 % about 30 days after
+# 2026-11-11. The *_read metrics are the backfill; the per-field metrics are fill
+# rates over the rows already read and have no 100 % to reach (most movies have no
+# Instagram account), so they suppress the ETA.
+#
+# COST: TIM_EXTERNAL_IDS is not indexed. Each metric is one scan of its table; the
+# three tables are scanned a dozen times in all, comparable to the release-dates and
+# watch-providers reports.
+#
+# The columns exist on the live database since 2026-11-11 (ALTER by hand, then
+# f_tmdbsocialensurecolumns at every crawler start). A missing column would take
+# the whole report down at parse time: social_ids_ddl reads information_schema and
+# says so first.
+#
+# The same counts as one ad-hoc query: tmdb-crawler doc/sql/monitoring.sql,
+# section "Social-network ids of external_ids".
+
+slug: tmdb-social-ids-coverage
+title: "TMDb - social-network ids coverage"
+source_db: TMDB
+description: >
+  Backfill of the social-network ids (Facebook, Instagram, X, TikTok, YouTube) that
+  tmdb-crawler 1.0.12 keeps from TMDb's external_ids for persons, movies and series,
+  and their fill rate per network over the rows already read. Read coverage grows
+  with the 30-day refresh; an empty id after a read means TMDb has none.
+
+params:
+  live_person: "P.DELETED = 0"
+  live_movie: "M.DELETED = 0"
+  live_serie: "S.DELETED = 0"
+
+metrics:
+  # --- schema ------------------------------------------------------------------
+  - key: social_ids_ddl
+    table: T_WC_TMDB_PERSON
+    description: "Social-network id columns in place (14 columns, 3 tables)"
+    long_desc: >
+      Presence of the 14 columns in information_schema: 5 ids and TIM_EXTERNAL_IDS on
+      persons, 3 ids and TIM_EXTERNAL_IDS on movies and on series. 14/14 since
+      2026-11-11. Anything lower means a table was rebuilt from an older DDL: the
+      crawler re-adds the columns at its next start (ALGORITHM=INSTANT) or prints
+      "Could not add the social-network id columns" in its log.
+    warn_below: 100
+    show_eta: false
+    done_sql: >
+      SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND ((TABLE_NAME = 'T_WC_TMDB_PERSON'
+              AND COLUMN_NAME IN ('FACEBOOK_ID','INSTAGRAM_ID','TWITTER_ID','TIKTOK_ID','YOUTUBE_ID','TIM_EXTERNAL_IDS'))
+          OR (TABLE_NAME IN ('T_WC_TMDB_MOVIE','T_WC_TMDB_SERIE')
+              AND COLUMN_NAME IN ('FACEBOOK_ID','INSTAGRAM_ID','TWITTER_ID','TIM_EXTERNAL_IDS')))
+    expected_sql: "SELECT 14"
+
+  # --- backfill: rows read since 1.0.12 ----------------------------------------
+  - key: person_external_ids_read
+    table: T_WC_TMDB_PERSON
+    description: "Persons whose external_ids were read since 1.0.12"
+    long_desc: >
+      Live persons with TIM_EXTERNAL_IDS set, over all live persons. This is the
+      backfill of the five person ids: it should approach 100 % about 30 days after
+      2026-11-11. A flat sparkline means the refresh processes stopped.
+    warn_below: 50
+    rate_label: "persons/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person}"
+    trend_sql: "SELECT DATE(P.TIM_EXTERNAL_IDS) AS READ_DAY, COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL GROUP BY READ_DAY ORDER BY READ_DAY"
+
+  - key: movie_external_ids_read
+    table: T_WC_TMDB_MOVIE
+    description: "Movies whose external_ids were read since 1.0.12"
+    long_desc: >
+      Live movies with TIM_EXTERNAL_IDS set, over all live movies. Backfill of the
+      three movie ids, driven by the 30-day refresh.
+    warn_below: 50
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie} AND M.TIM_EXTERNAL_IDS IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie}"
+    trend_sql: "SELECT DATE(M.TIM_EXTERNAL_IDS) AS READ_DAY, COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie} AND M.TIM_EXTERNAL_IDS IS NOT NULL GROUP BY READ_DAY ORDER BY READ_DAY"
+
+  - key: serie_external_ids_read
+    table: T_WC_TMDB_SERIE
+    description: "Series whose external_ids were read since 1.0.12"
+    long_desc: >
+      Live series with TIM_EXTERNAL_IDS set, over all live series. Backfill of the
+      three series ids, driven by the 30-day refresh.
+    warn_below: 50
+    rate_label: "series/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie} AND S.TIM_EXTERNAL_IDS IS NOT NULL"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie}"
+    trend_sql: "SELECT DATE(S.TIM_EXTERNAL_IDS) AS READ_DAY, COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie} AND S.TIM_EXTERNAL_IDS IS NOT NULL GROUP BY READ_DAY ORDER BY READ_DAY"
+
+  # --- fill per network, over the rows already read -----------------------------
+  # No 100 % to reach: a person without an Instagram account is a valid read. These
+  # rates are stable once a few thousand rows are read; a sudden drop to 0 on one
+  # network while the others hold means TMDb renamed or dropped that key.
+  - key: person_facebook_id_fill
+    table: T_WC_TMDB_PERSON
+    description: "Read persons with a Facebook id"
+    long_desc: "Share of the persons read since 1.0.12 whose FACEBOOK_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "persons/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL AND P.FACEBOOK_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: person_instagram_id_fill
+    table: T_WC_TMDB_PERSON
+    description: "Read persons with an Instagram id"
+    long_desc: "Share of the persons read since 1.0.12 whose INSTAGRAM_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "persons/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL AND P.INSTAGRAM_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: person_twitter_id_fill
+    table: T_WC_TMDB_PERSON
+    description: "Read persons with an X (Twitter) id"
+    long_desc: "Share of the persons read since 1.0.12 whose TWITTER_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "persons/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL AND P.TWITTER_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: person_tiktok_id_fill
+    table: T_WC_TMDB_PERSON
+    description: "Read persons with a TikTok id"
+    long_desc: "Share of the persons read since 1.0.12 whose TIKTOK_ID is not empty. Persons only: TMDb has no TikTok field for movies or series."
+    warn_below: 0
+    show_eta: false
+    rate_label: "persons/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL AND P.TIKTOK_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: person_youtube_id_fill
+    table: T_WC_TMDB_PERSON
+    description: "Read persons with a YouTube id"
+    long_desc: "Share of the persons read since 1.0.12 whose YOUTUBE_ID is not empty. Persons only: TMDb has no YouTube field for movies or series."
+    warn_below: 0
+    show_eta: false
+    rate_label: "persons/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL AND P.YOUTUBE_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE {live_person} AND P.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: movie_facebook_id_fill
+    table: T_WC_TMDB_MOVIE
+    description: "Read movies with a Facebook id"
+    long_desc: "Share of the movies read since 1.0.12 whose FACEBOOK_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie} AND M.TIM_EXTERNAL_IDS IS NOT NULL AND M.FACEBOOK_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie} AND M.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: movie_instagram_id_fill
+    table: T_WC_TMDB_MOVIE
+    description: "Read movies with an Instagram id"
+    long_desc: "Share of the movies read since 1.0.12 whose INSTAGRAM_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie} AND M.TIM_EXTERNAL_IDS IS NOT NULL AND M.INSTAGRAM_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie} AND M.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: movie_twitter_id_fill
+    table: T_WC_TMDB_MOVIE
+    description: "Read movies with an X (Twitter) id"
+    long_desc: "Share of the movies read since 1.0.12 whose TWITTER_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "movies/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie} AND M.TIM_EXTERNAL_IDS IS NOT NULL AND M.TWITTER_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE {live_movie} AND M.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: serie_facebook_id_fill
+    table: T_WC_TMDB_SERIE
+    description: "Read series with a Facebook id"
+    long_desc: "Share of the series read since 1.0.12 whose FACEBOOK_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "series/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie} AND S.TIM_EXTERNAL_IDS IS NOT NULL AND S.FACEBOOK_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie} AND S.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: serie_instagram_id_fill
+    table: T_WC_TMDB_SERIE
+    description: "Read series with an Instagram id"
+    long_desc: "Share of the series read since 1.0.12 whose INSTAGRAM_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "series/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie} AND S.TIM_EXTERNAL_IDS IS NOT NULL AND S.INSTAGRAM_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie} AND S.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  - key: serie_twitter_id_fill
+    table: T_WC_TMDB_SERIE
+    description: "Read series with an X (Twitter) id"
+    long_desc: "Share of the series read since 1.0.12 whose TWITTER_ID is not empty."
+    warn_below: 0
+    show_eta: false
+    rate_label: "series/day"
+    done_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie} AND S.TIM_EXTERNAL_IDS IS NOT NULL AND S.TWITTER_ID <> ''"
+    expected_sql: "SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE {live_serie} AND S.TIM_EXTERNAL_IDS IS NOT NULL"
+
+  # --- invariant -----------------------------------------------------------------
+  - key: social_ids_read_with_null
+    table: T_WC_TMDB_PERSON
+    kind: alert_zero
+    description: "Rows read since 1.0.12 holding a NULL social id (3 tables)"
+    long_desc: >
+      Must be 0. f_tmdbsocialcouples writes every id of the entity ('' when TMDb has
+      none) in the same UPDATE as TIM_EXTERNAL_IDS. A NULL id on a read row means a
+      writer stamped TIM_EXTERNAL_IDS without the ids, and the reader can no longer
+      tell "TMDb has none" from "not read".
+    done_sql: >
+      SELECT
+        (SELECT COUNT(*) FROM T_WC_TMDB_PERSON P WHERE P.TIM_EXTERNAL_IDS IS NOT NULL
+           AND (P.FACEBOOK_ID IS NULL OR P.INSTAGRAM_ID IS NULL OR P.TWITTER_ID IS NULL
+                OR P.TIKTOK_ID IS NULL OR P.YOUTUBE_ID IS NULL))
+      + (SELECT COUNT(*) FROM T_WC_TMDB_MOVIE M WHERE M.TIM_EXTERNAL_IDS IS NOT NULL
+           AND (M.FACEBOOK_ID IS NULL OR M.INSTAGRAM_ID IS NULL OR M.TWITTER_ID IS NULL))
+      + (SELECT COUNT(*) FROM T_WC_TMDB_SERIE S WHERE S.TIM_EXTERNAL_IDS IS NOT NULL
+           AND (S.FACEBOOK_ID IS NULL OR S.INSTAGRAM_ID IS NULL OR S.TWITTER_ID IS NULL))
