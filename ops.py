@@ -447,7 +447,7 @@ def evaluate_services(registry, containers, prev_restarts):
                     "label": s.get("label") or (names[0] if names else "?"),
                     "group": s.get("group", "Services"), "verdict": verdict,
                     "container_info": c, "names": names, "notes": notes,
-                    "description": s.get("description")})
+                    "description": s.get("description"), "repos": s.get("repos") or []})
     return out
 
 

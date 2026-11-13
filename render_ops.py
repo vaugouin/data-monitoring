@@ -142,7 +142,9 @@ def _service_rows(services, hist, today, pages):
         up = ops.parse_iso_to_paris(c.get("started_at")) if c.get("running") else None
         rows.append(
             f'<tr><td>{chip(s["verdict"])}</td><td><b>{e(s["label"])}</b>'
-            f'<div class="muted">{e(c.get("name") or ", ".join(s["names"]))}</div></td>'
+            f'<div class="muted">{e(c.get("name") or ", ".join(s["names"]))}</div>'
+            + (f'<div class="muted">code: {e(", ".join(s["repos"]))}</div>' if s.get("repos") else "")
+            + '</td>'
             f'<td class="num">{_dt(up)}</td>'
             f'<td class="num">{e(c.get("restart_count", "-"))}</td>'
             f'<td>{e(c.get("health") or "-")}</td>'

@@ -337,10 +337,18 @@ tasks:
 # `optional: true`: absent = OFF (grey), not DOWN. Names from the migration doc; a
 # wrong name shows as DOWN "no such container", and the real name then appears under
 # "Other containers": fix it here.
+# `repos`: the code repositories the container serves (bind-mounted clones under
+# ~/docker), shown under the container name.
 services:
   - {slug: reverseproxy, label: NGINX reverse proxy, container: reverseproxy}
-  - {slug: frontend, label: Website (Apache), container: frontend-vaugouin-com}
-  - {slug: php-fpm, label: Website (PHP-FPM), container: damp-vaugouin-com-php-fpm-1}
+  - slug: frontend
+    label: Website (Apache)
+    container: frontend-vaugouin-com
+    repos: [tmdb-front, t2s-front, t2s-front-plugins, t2s-back]
+  - slug: php-fpm
+    label: Website (PHP-FPM)
+    container: damp-vaugouin-com-php-fpm-1
+    repos: [tmdb-front, t2s-front, t2s-front-plugins, t2s-back]
   - {slug: mariadb, label: MariaDB, container: damp-vaugouin-com-mariadb-1}
   - {slug: phpmyadmin, label: phpMyAdmin, container: phpmyadmin-vaugouin, optional: true}
   - {slug: chromadb, label: ChromaDB, container: chromadb-server}
