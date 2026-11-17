@@ -11,7 +11,7 @@ comments carry its modelling details and caveats.
 
 ## Scope
 
-Observability stage of the Agent BBB ecosystem (roster:
+Observability stage of the Cinephile App ecosystem (roster:
 `%USERPROFILE%/Nestor/projets/t2s-backlog/topics/related-repositories.txt`): campaign
 trend, completion and ETA, never realtime liveness (that is `srvvar.php`), plus the
 daily ops dashboard of the automated tasks (a morning checkpoint, not a live console). It is

@@ -1,7 +1,7 @@
 # data-monitoring
 
 Nightly **coverage / progress reports** for long-running backfill campaigns in the
-Agent BBB ecosystem - e.g. the multi-month TMDb TV season/episode gather. It reads
+Cinephile App ecosystem - e.g. the multi-month TMDb TV season/episode gather. It reads
 the finished `T_WC_*` tables (read-only), records a daily snapshot, and renders a
 self-contained HTML artifact. It does **not** gather or transform data.
 
